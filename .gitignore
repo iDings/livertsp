@@ -1,0 +1,9 @@
+*.o
+*.a
+/live/hlsProxy
+/live/testProgs
+/live/proxyServer
+/live/mediaServer
+/.vscode
+/logs
+/.deps
