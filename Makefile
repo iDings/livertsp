@@ -9,16 +9,18 @@ libUsageEnvironment_LIB_SUFFIX = $(LIB_SUFFIX)
 libgroupsock_LIB_SUFFIX = $(LIB_SUFFIX)
 ##### Change the following for your environment:
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
-COMPILE_OPTS =	$(DEPFLAGS)	$(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O2 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
+ELFLAGS = -DELPP_THREAD_SAFE
+
+COMPILE_OPTS =	-g $(ELFLAGS) $(DEPFLAGS) $(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O2 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
 C =			c
 C_COMPILER =		cc
-C_FLAGS =		$(COMPILE_OPTS)
+C_FLAGS =		$(COMPILE_OPTS)  -fsanitize=address -fno-omit-frame-pointer
 CPP =			cpp
 CPLUSPLUS_COMPILER =	c++
-CPLUSPLUS_FLAGS = -std=c++11 $(COMPILE_OPTS) -Wall -DBSD=1 -Wno-range-loop-construct
+CPLUSPLUS_FLAGS = -std=c++11 $(COMPILE_OPTS) -Wall -DBSD=1 -Wno-range-loop-construct  -fsanitize=address -fno-omit-frame-pointer
 OBJ =			o
 LINK =			c++ -o
-LINK_OPTS =		-L.
+LINK_OPTS =		-L. -fsanitize=address -fno-omit-frame-pointer
 CONSOLE_LINK_OPTS =	$(LINK_OPTS)
 LIBRARY_LINK =		ar cr
 LIBRARY_LINK_OPTS =
