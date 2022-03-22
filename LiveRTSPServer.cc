@@ -68,31 +68,41 @@ void LiveRTSPServer::LiveTask(LiveRTSPServer *lrs) {
     lrs->startCondVar.notify_one();
 
     lrs->env->taskScheduler().doEventLoop(&lrs->stoppedFlag);
-    LOG(INFO) << "LiveRTSP Stoped";
+
+    lrs->start = false;
+    lrs->stoppedFlag = 0;
+    LOG(INFO) << "LiveRTSP Running Done";
 }
 
 bool LiveRTSPServer::Start() {
+    if (start) return true;
+    if (stoppedFlag) return false;
+    LOG(INFO) << "Starting";
+
     liveThread = std::thread(LiveTask, this);
     {
         std::unique_lock<std::mutex> lock(startMutex);
         startCondVar.wait(lock, [this] {return start;});
     }
+    LOG(INFO) << "Starting Done";
     return true;
 }
 
 bool LiveRTSPServer::Stop() {
+    if (!start) return true;
     if (stoppedFlag) return true;
 
+    LOG(INFO) << "Stop";
     stoppedFlag = 1;
     std::string stop("stop");
     Control(stop);
     liveThread.join();
 
-    start = false;
+    LOG(INFO) << "Stop Done";
     return true;
 }
 
-bool LiveRTSPServer::Control(const std:: string &msg) {
+uint32_t LiveRTSPServer::Control(const std:: string &msg) {
     if (!start) return false;
 
     MessageHeader message;
@@ -100,7 +110,7 @@ bool LiveRTSPServer::Control(const std:: string &msg) {
     message.type = TYPE_STRING;
 
     std::vector<uint8_t> messagebuf;
-    uint8_t *msghdr = reinterpret_cast<uint8_t *>(&message);
+    const uint8_t *msghdr = reinterpret_cast<uint8_t *>(&message);
     messagebuf.insert(messagebuf.end(), msghdr, msghdr + sizeof(MessageHeader));
     messagebuf.insert(messagebuf.end(), msg.begin(), msg.end());
     messagebuf.emplace_back('\0');
@@ -128,27 +138,35 @@ bool LiveRTSPServer::Poking(std::vector<uint8_t> &messagebuf) {
 // @LiveTask private static callback
 void LiveRTSPServer::ControlHandler(LiveRTSPServer *lrs, int mask) {
     int ret;
+    bool selfdone = false;
     uint8_t buf[1024];
     int fd = lrs->pipe_r.get();
 
-    ret = read(fd, buf, sizeof(buf));
-    if (ret > 0) {
-        lrs->messageBuf.insert(lrs->messageBuf.end(), buf, buf + ret);
-    } else if (ret == 0) {
-        lrs->stoppedFlag = 1;
-        LOG(ERROR) << "pipe closed";
-    } else if (ret < 0 && (errno != EAGAIN || errno != EWOULDBLOCK)) {
-        lrs->stoppedFlag = 1;
-        LOG(ERROR) << "read failure " << strerror(errno);
-    }
+    do {
+        ret = read(fd, buf, sizeof(buf));
+        if (ret > 0) {
+            lrs->messageBuf.insert(lrs->messageBuf.end(), buf, buf + ret);
+        } else if (ret == 0) {
+            selfdone = true;
+            LOG(ERROR) << "pipe closed";
+            break;
+        } else if (ret < 0) {
+            if (errno == EINTR) continue;
+
+            if ((errno != EAGAIN || errno != EWOULDBLOCK)) {
+                selfdone = true;
+                LOG(ERROR) << "read failure " << strerror(errno);
+            }
+            break;
+        }
+    } while (1);
 
     do {
-        if (lrs->stoppedFlag) return;
-        if (lrs->messageBuf.size() < sizeof(MessageHeader)) return;
+        if (lrs->messageBuf.size() < sizeof(MessageHeader)) break;
 
         uint8_t *mbuf = lrs->messageBuf.data();
         MessageHeader *msgHdr = reinterpret_cast<MessageHeader *>(mbuf);
-        if (lrs->messageBuf.size() < msgHdr->length) return;
+        if (lrs->messageBuf.size() < msgHdr->length) break;
 
         if (msgHdr->type != TYPE_STRING) {
             LOG(ERROR) << "unsupport type: " << msgHdr->type;
@@ -163,6 +181,14 @@ void LiveRTSPServer::ControlHandler(LiveRTSPServer *lrs, int mask) {
         lrs->messageBuf.erase(lrs->messageBuf.begin(), lrs->messageBuf.begin() + msgHdr->length);
     } while (1);
 
+    if (selfdone) {
+        lrs->liveThread.detach();
+        lrs->stoppedFlag = 1;
+    }
+
+    if (lrs->stoppedFlag) {
+        lrs->messageBuf.clear();
+    }
     return;
 }
 }

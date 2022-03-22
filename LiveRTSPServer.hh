@@ -25,7 +25,7 @@ public:
 
     bool Start();
     bool Stop();
-    bool Control(const std::string &msg);
+    uint32_t Control(const std::string &msg);
 
 protected:
     LiveRTSPServer();
