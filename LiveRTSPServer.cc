@@ -16,9 +16,9 @@ enum message_type {
 };
 
 struct MessageHeader {
+    uint32_t length;
     uint32_t uniqueid;
     int8_t type;
-    uint32_t length;
 };
 
 uint32_t LiveRTSPServer::genid = 0;
@@ -33,7 +33,7 @@ std::unique_ptr<LiveRTSPServer> LiveRTSPServer::MakeLiveRTSPServer() {
     return self;
 }
 
-LiveRTSPServer::LiveRTSPServer() {}
+LiveRTSPServer::LiveRTSPServer() : start(false), stoppedFlag(0) {}
 LiveRTSPServer::~LiveRTSPServer() {
     env->reclaim();
     delete scheduler;
@@ -52,7 +52,6 @@ bool LiveRTSPServer::Initialize() {
     pipe_r.reset(pipefd[0]);
     pipe_w.reset(pipefd[1]);
 
-    stoppedFlag = 0;
     scheduler = BasicTaskScheduler::createNew();
     env = BasicUsageEnvironment::createNew(*scheduler);
     scheduler->setBackgroundHandling(pipe_r.get(), SOCKET_READABLE | SOCKET_EXCEPTION,
@@ -65,17 +64,18 @@ void LiveRTSPServer::LiveTask(LiveRTSPServer *lrs) {
     LOG(INFO) << "LiveRTSP Running";
 
     if (genid == 0) ++genid;
-    lrs->uniqueid = genid;
+    lrs->liveid = genid;
 
     {
         std::lock_guard<std::mutex> lock(lrs->startMutex);
         lrs->start = true;
     }
     lrs->startCondVar.notify_one();
+    LOG(INFO) << "LiveRTSP Started";
 
     lrs->env->taskScheduler().doEventLoop(&lrs->stoppedFlag);
 
-    lrs->uniqueid = 0;
+    lrs->liveid = 0;
     LOG(INFO) << "LiveRTSP Stoped";
 }
 
@@ -86,6 +86,7 @@ bool LiveRTSPServer::Start() {
         std::unique_lock<std::mutex> lock(startMutex);
         startCondVar.wait(lock, [this] {return start;});
     }
+    LOG(INFO) << "Started";
     return true;
 }
 
@@ -94,7 +95,7 @@ bool LiveRTSPServer::Stop() {
     if (stoppedFlag) return true;
 
     stoppedFlag = 1;
-    std::string stop("");
+    std::string stop("stop");
     Control(stop);
     liveThread.join();
 
@@ -104,10 +105,13 @@ bool LiveRTSPServer::Stop() {
 }
 
 bool LiveRTSPServer::Control(const std:: string &msg) {
+    if (!start) return false;
+
     MessageHeader message;
-    message.uniqueid = uniqueid;
-    message.type = TYPE_STRING;
     message.length = sizeof(MessageHeader) + msg.length() + 1;
+    LOG(INFO) << "length " << message.length << " liveid " << std::hex << liveid;
+    message.uniqueid = liveid;
+    message.type = TYPE_STRING;
 
     std::vector<uint8_t> messagebuf;
     uint8_t *msghdr = reinterpret_cast<uint8_t *>(&message);
@@ -135,7 +139,7 @@ bool LiveRTSPServer::Poking(std::vector<uint8_t> &messagebuf) {
     return true;
 }
 
-// private static callback
+// @LiveTask private static callback
 void LiveRTSPServer::ControlHandler(LiveRTSPServer *lrs, int mask) {
     int ret;
     uint8_t buf[1024];
@@ -160,14 +164,20 @@ void LiveRTSPServer::ControlHandler(LiveRTSPServer *lrs, int mask) {
         MessageHeader *msgHdr = reinterpret_cast<MessageHeader *>(mbuf);
         if (lrs->messageBuf.size() < msgHdr->length) return;
 
+        if (msgHdr->uniqueid != lrs->liveid) {
+            LOG(ERROR) << "uniqueid mismatch: " << msgHdr->uniqueid << " " << lrs->liveid;
+            lrs->messageBuf.erase(lrs->messageBuf.begin(), lrs->messageBuf.begin() + msgHdr->length);
+            continue;
+        }
+
         if (msgHdr->type != TYPE_STRING) {
             LOG(ERROR) << "unsupport type: " << msgHdr->type;
             lrs->messageBuf.erase(lrs->messageBuf.begin(), lrs->messageBuf.begin() + msgHdr->length);
             continue;
         }
 
-        const char *string = reinterpret_cast<char *>(mbuf) + sizeof(MessageHeader);
-        LOG(INFO) << "argv: " << string;
+        const char *cmdstr = reinterpret_cast<char *>(mbuf) + sizeof(MessageHeader);
+        LOG(INFO) << "command: " << cmdstr;
         // TODO: dispatch handler
 
         lrs->messageBuf.erase(lrs->messageBuf.begin(), lrs->messageBuf.begin() + msgHdr->length);

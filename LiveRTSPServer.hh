@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <mutex>
+#include <atomic>
 #include <condition_variable>
 
 #include "mcore/unique_fd.h"
@@ -40,7 +41,7 @@ private:
 
     mcore::unique_fd pipe_r;
     mcore::unique_fd pipe_w;
-    uint32_t uniqueid;
+    uint32_t liveid;
     std::thread liveThread;
 
     bool start;
