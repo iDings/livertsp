@@ -54,19 +54,19 @@ bool LiveRTSPServer::Initialize() {
     scheduler = BasicTaskScheduler::createNew();
     env = BasicUsageEnvironment::createNew(*scheduler);
     scheduler->setBackgroundHandling(pipe_r.get(), SOCKET_READABLE | SOCKET_EXCEPTION,
-            (TaskScheduler::BackgroundHandlerProc*)&ControlHandler, this);
+            (TaskScheduler::BackgroundHandlerProc*)&ControlProcess, this);
     return true;
 }
 
 // private static callback
 void LiveRTSPServer::LiveTask(LiveRTSPServer *lrs) {
-    LOG(INFO) << "LiveRTSP Running";
     {
         std::lock_guard<std::mutex> lock(lrs->startMutex);
         lrs->start = true;
     }
     lrs->startCondVar.notify_one();
 
+    LOG(INFO) << "LiveRTSP Running";
     lrs->env->taskScheduler().doEventLoop(&lrs->stoppedFlag);
 
     lrs->start = false;
@@ -135,8 +135,25 @@ bool LiveRTSPServer::Poking(std::vector<uint8_t> &messagebuf) {
     return true;
 }
 
+__attribute_maybe_unused__
+static std::string& strip(std::string& s, const std::string& chars = " ") {
+    s.erase(0, s.find_first_not_of(chars.c_str()));
+    s.erase(s.find_last_not_of(chars.c_str()) + 1);
+    return s;
+}
+
+static void split(const std::string& s, std::vector<std::string>& tokens, const std::string& delimiters = " ") {
+    std::string::size_type lastPos = s.find_first_not_of(delimiters, 0);
+    std::string::size_type pos = s.find_first_of(delimiters, lastPos);
+    while (std::string::npos != pos || std::string::npos != lastPos) {
+        tokens.push_back(s.substr(lastPos, pos - lastPos));
+        lastPos = s.find_first_not_of(delimiters, pos);
+        pos = s.find_first_of(delimiters, lastPos);
+    }
+}
+
 // @LiveTask private static callback
-void LiveRTSPServer::ControlHandler(LiveRTSPServer *lrs, int mask) {
+void LiveRTSPServer::ControlProcess(LiveRTSPServer *lrs, int mask) {
     int ret;
     bool selfdone = false;
     uint8_t buf[1024];
@@ -174,9 +191,24 @@ void LiveRTSPServer::ControlHandler(LiveRTSPServer *lrs, int mask) {
             continue;
         }
 
-        const char *cmdstr = reinterpret_cast<char *>(mbuf) + sizeof(MessageHeader);
-        LOG(INFO) << "command: " << cmdstr;
-        // TODO: dispatch handler
+        char *cmdstr = reinterpret_cast<char *>(mbuf) + sizeof(MessageHeader);
+        std::string command(cmdstr);
+        std::vector<std::string> tokens;
+        split(command, tokens);
+        if (!tokens.empty()) {
+            LOG(INFO) << "comamnd: " << tokens[0];
+            std::map<std::string, std::string> kvmap;
+            for (auto &keyval : tokens) {
+                std::vector<std::string> kv;
+                split(keyval, kv, "=");
+                if (kv.empty() || kv.size() != 2) continue;
+                kvmap[kv[0]] = kv[1];
+            }
+
+            for (auto &kv : kvmap) {
+                LOG(INFO) << "key:" << kv.first << " val:" << kv.second;
+            }
+        }
 
         lrs->messageBuf.erase(lrs->messageBuf.begin(), lrs->messageBuf.begin() + msgHdr->length);
     } while (1);

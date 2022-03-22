@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <mutex>
 #include <atomic>
+#include <map>
+#include <functional>
 #include <condition_variable>
 
 #include "mcore/unique_fd.h"
@@ -14,6 +16,7 @@
 #include "GroupsockHelper.hh"
 
 namespace LiveRTSP {
+
 // https://abseil.io/tips/42
 class LiveRTSPServer {
 public:
@@ -32,7 +35,7 @@ protected:
 
 private:
     static void LiveTask(LiveRTSPServer *livertsp);
-    static void ControlHandler(LiveRTSPServer *livertsp, int mask);
+    static void ControlProcess(LiveRTSPServer *livertsp, int mask);
 
     bool Poking(std::vector<uint8_t> &messageBuf);
     bool Initialize();
@@ -50,6 +53,10 @@ private:
     TaskScheduler *scheduler;
     UsageEnvironment *env;
     std::vector<uint8_t> messageBuf;
+
+    typedef std::function<void (const std::map<std::string,std::string> &keyval)> ControlHandler;
+    std::map<std::string, ControlHandler> controlMap;
+
     char stoppedFlag;
 };
 }
