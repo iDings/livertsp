@@ -21,7 +21,7 @@ static void signal_handler(int sig, siginfo_t *si, void *ucontext) {
     return;
 }
 
-const char *get_systid(void) {
+const char *get_systid(const el::LogMessage *) {
     static char buf[64];
     snprintf(buf, sizeof(buf) - 1, "%d", gettid());
     return buf;

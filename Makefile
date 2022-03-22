@@ -9,9 +9,9 @@ libUsageEnvironment_LIB_SUFFIX = $(LIB_SUFFIX)
 libgroupsock_LIB_SUFFIX = $(LIB_SUFFIX)
 ##### Change the following for your environment:
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
-ELFLAGS = -DELPP_THREAD_SAFE
+EASYLOGGING_FLAGS = -DELPP_THREAD_SAFE
 
-COMPILE_OPTS =	-g $(ELFLAGS) $(DEPFLAGS) $(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O2 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
+COMPILE_OPTS =	-g $(EASYLOGGING_FLAGS) $(DEPFLAGS) $(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O2 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
 C =			c
 C_COMPILER =		cc
 C_FLAGS =		$(COMPILE_OPTS)  -fsanitize=address -fno-omit-frame-pointer
@@ -45,6 +45,8 @@ live555:
 	make -C $(LIVE555_DIR)/UsageEnvironment
 	make -C $(LIVE555_DIR)/mediaServer
 
+EASYLOGGING_CC_SRCS = easyloggingpp/easylogging++.cc
+
 MEDIA_SERVER_CC_SRCS = Main.cc \
 					   LiveRTSPServer.cc \
 					   H264LiveMediaSubsession.cc \
@@ -52,7 +54,7 @@ MEDIA_SERVER_CC_SRCS = Main.cc \
 					   SimpleLiveMediaSubsession.cc \
 					   ADTSLiveMediaSubsession.cc
 
-MEDIA_SERVER_OBJS = $(MEDIA_SERVER_C_SRCS:%.c=%.o) $(MEDIA_SERVER_CC_SRCS:%.cc=%.o)
+MEDIA_SERVER_OBJS = $(MEDIA_SERVER_C_SRCS:%.c=%.o) $(MEDIA_SERVER_CC_SRCS:%.cc=%.o) $(EASYLOGGING_CC_SRCS:.cc=.o)
 DEPFILES := $(MEDIA_SERVER_C_SRCS:%.c=$(DESTDIR)/%.d) $(MEDIA_SERVER_CC_SRCS:%.cc=$(DEPDIR)/%.d)
 $(info $(DEPFILES))
 
@@ -86,6 +88,9 @@ install: $(MEDIA_SERVER)
 %.o : %.cc
 %.o : %.cc $(DEPDIR)/%.d | $(DEPDIR)
 	$(info $@ $<)
+	$(CPLUSPLUS_COMPILER) -c $(CPLUSPLUS_FLAGS) $< -o $@
+
+easyloggingpp/%.o : easyloggingpp/%.cc
 	$(CPLUSPLUS_COMPILER) -c $(CPLUSPLUS_FLAGS) $< -o $@
 
 $(DEPDIR): ; @mkdir -p $@
