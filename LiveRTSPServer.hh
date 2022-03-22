@@ -41,7 +41,6 @@ private:
 
     mcore::unique_fd pipe_r;
     mcore::unique_fd pipe_w;
-    uint32_t liveid;
     std::thread liveThread;
 
     bool start;

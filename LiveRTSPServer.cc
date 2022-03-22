@@ -17,7 +17,6 @@ enum message_type {
 
 struct MessageHeader {
     uint32_t length;
-    uint32_t uniqueid;
     int8_t type;
 };
 
@@ -62,36 +61,26 @@ bool LiveRTSPServer::Initialize() {
 // private static callback
 void LiveRTSPServer::LiveTask(LiveRTSPServer *lrs) {
     LOG(INFO) << "LiveRTSP Running";
-
-    if (genid == 0) ++genid;
-    lrs->liveid = genid;
-
     {
         std::lock_guard<std::mutex> lock(lrs->startMutex);
         lrs->start = true;
     }
     lrs->startCondVar.notify_one();
-    LOG(INFO) << "LiveRTSP Started";
 
     lrs->env->taskScheduler().doEventLoop(&lrs->stoppedFlag);
-
-    lrs->liveid = 0;
     LOG(INFO) << "LiveRTSP Stoped";
 }
 
 bool LiveRTSPServer::Start() {
-    LOG(INFO) << "Starting";
     liveThread = std::thread(LiveTask, this);
     {
         std::unique_lock<std::mutex> lock(startMutex);
         startCondVar.wait(lock, [this] {return start;});
     }
-    LOG(INFO) << "Started";
     return true;
 }
 
 bool LiveRTSPServer::Stop() {
-    LOG(INFO) << "Stopping";
     if (stoppedFlag) return true;
 
     stoppedFlag = 1;
@@ -100,7 +89,6 @@ bool LiveRTSPServer::Stop() {
     liveThread.join();
 
     start = false;
-    LOG(INFO) << "Stop Done";
     return true;
 }
 
@@ -109,8 +97,6 @@ bool LiveRTSPServer::Control(const std:: string &msg) {
 
     MessageHeader message;
     message.length = sizeof(MessageHeader) + msg.length() + 1;
-    LOG(INFO) << "length " << message.length << " liveid " << std::hex << liveid;
-    message.uniqueid = liveid;
     message.type = TYPE_STRING;
 
     std::vector<uint8_t> messagebuf;
@@ -163,12 +149,6 @@ void LiveRTSPServer::ControlHandler(LiveRTSPServer *lrs, int mask) {
         uint8_t *mbuf = lrs->messageBuf.data();
         MessageHeader *msgHdr = reinterpret_cast<MessageHeader *>(mbuf);
         if (lrs->messageBuf.size() < msgHdr->length) return;
-
-        if (msgHdr->uniqueid != lrs->liveid) {
-            LOG(ERROR) << "uniqueid mismatch: " << msgHdr->uniqueid << " " << lrs->liveid;
-            lrs->messageBuf.erase(lrs->messageBuf.begin(), lrs->messageBuf.begin() + msgHdr->length);
-            continue;
-        }
 
         if (msgHdr->type != TYPE_STRING) {
             LOG(ERROR) << "unsupport type: " << msgHdr->type;
