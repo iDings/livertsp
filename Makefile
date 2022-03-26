@@ -38,7 +38,7 @@ all: $(ALL)
 .PHONY: live555
 
 live555:
-	cd $(LIVE555_DIR); ./genMakefiles linux-no-openssl
+	cd $(LIVE555_DIR); ./genMakefiles linux-no-openssl-asan
 	make -C $(LIVE555_DIR)/BasicUsageEnvironment
 	make -C $(LIVE555_DIR)/groupsock
 	make -C $(LIVE555_DIR)/liveMedia

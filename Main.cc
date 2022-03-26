@@ -39,17 +39,24 @@ int main(int argc, char **argv) {
     sa.sa_sigaction = signal_handler;
     sigaction(SIGINT, &sa, NULL);
 
-    std::unique_ptr<LiveRTSPServer> lrs = LiveRTSPServer::MakeLiveRTSPServer();
+    portNumBits rtspServerPortNum = 8554;
+    unsigned reclamationTestSeconds = 60;
+    std::unique_ptr<LiveRTSPServer> lrs = LiveRTSPServer::MakeLiveRTSPServer(rtspServerPortNum, reclamationTestSeconds);
+    if (lrs == NULL) {
+        LOG(ERROR) << "make live rtsp server port " << rtspServerPortNum << " failure";
+        exit(1);
+    }
+
     lrs->Start();
 
-    lrs->Control("cmd key0=val0 key1=val1 key2=val2 ...");
-    lrs->Control("cmd1 key0=val0 key1=val1 key2=val2 ...");
+    lrs->Control("cmd key0=val0 key1=val1 key2=val2");
+    lrs->Control("cmd1 key0=val0 key1=val1 key2=val2");
 
     lrs->Stop();
-    lrs->Control("drop key0=val0 key1=val1 key2=val2 ...");
+    lrs->Control("drop key0=val0 key1=val1 key2=val2");
 
     lrs->Start();
-    lrs->Control("cmd2 key0=val0 key1=val1 key2=val2 ...");
+    lrs->Control("cmd2 key0=val0 key1=val1 key2=val2");
 
     while (running) {
         sleep(1);

@@ -7,6 +7,7 @@
 
 #include "easyloggingpp/easylogging++.h"
 #include "nlohmann/json.hpp"
+
 #include "StreamReplicator.hh"
 
 namespace LiveRTSP {
@@ -22,9 +23,9 @@ struct MessageHeader {
 
 uint32_t LiveRTSPServer::genid = 0;
 
-std::unique_ptr<LiveRTSPServer> LiveRTSPServer::MakeLiveRTSPServer() {
+std::unique_ptr<LiveRTSPServer> LiveRTSPServer::MakeLiveRTSPServer(Port ourPort, unsigned reclamationTestSeconds) {
     std::unique_ptr<LiveRTSPServer> self(new LiveRTSPServer());
-    if (!self->Initialize()) {
+    if (!self || !self->Initialize(ourPort, reclamationTestSeconds)) {
         LOG(ERROR) << "Initialize Fail";
         return nullptr;
     }
@@ -32,13 +33,16 @@ std::unique_ptr<LiveRTSPServer> LiveRTSPServer::MakeLiveRTSPServer() {
     return self;
 }
 
-LiveRTSPServer::LiveRTSPServer() : start(false), stoppedFlag(0) {}
-LiveRTSPServer::~LiveRTSPServer() {
-    env->reclaim();
-    delete scheduler;
+LiveRTSPServer::LiveRTSPServer() :
+    start(false), stoppedFlag(0) {
+    LOG(INFO) << "LiveRTSPServer Ctor";
 }
 
-bool LiveRTSPServer::Initialize() {
+LiveRTSPServer::~LiveRTSPServer() {
+    LOG(INFO) << "LiveRTSPServer Dtor";
+}
+
+bool LiveRTSPServer::Initialize(Port ourPort, unsigned reclamationTestSeconds) {
     int pipefd[2];
     // packet mode
     int ret = pipe2(pipefd, O_CLOEXEC | O_DIRECT);
@@ -51,8 +55,11 @@ bool LiveRTSPServer::Initialize() {
     pipe_r.reset(pipefd[0]);
     pipe_w.reset(pipefd[1]);
 
-    scheduler = BasicTaskScheduler::createNew();
-    env = BasicUsageEnvironment::createNew(*scheduler);
+    scheduler.reset(BasicTaskScheduler::createNew());
+    env.reset(BasicUsageEnvironment::createNew(*scheduler));
+    rtspServer.reset(RTSPServerImpl::MakeRTSPServerImpl(*env, ourPort, NULL, reclamationTestSeconds));
+    if (rtspServer == nullptr) return false;
+
     scheduler->setBackgroundHandling(pipe_r.get(), SOCKET_READABLE | SOCKET_EXCEPTION,
             (TaskScheduler::BackgroundHandlerProc*)&ControlProcess, this);
     return true;
@@ -60,13 +67,14 @@ bool LiveRTSPServer::Initialize() {
 
 // private static callback
 void LiveRTSPServer::LiveTask(LiveRTSPServer *lrs) {
+
+    LOG(INFO) << "LiveRTSP Running";
     {
         std::lock_guard<std::mutex> lock(lrs->startMutex);
         lrs->start = true;
     }
     lrs->startCondVar.notify_one();
 
-    LOG(INFO) << "LiveRTSP Running";
     lrs->env->taskScheduler().doEventLoop(&lrs->stoppedFlag);
 
     lrs->start = false;
@@ -222,5 +230,31 @@ void LiveRTSPServer::ControlProcess(LiveRTSPServer *lrs, int mask) {
         lrs->messageBuf.clear();
     }
     return;
+}
+
+LiveRTSPServer::RTSPServerImpl *
+LiveRTSPServer::RTSPServerImpl::MakeRTSPServerImpl(UsageEnvironment &env,
+        Port ourPort, UserAuthenticationDatabase *authDatabase, unsigned reclamationSeconds) {
+    int ourSocketIPv4 = setUpOurSocket(env, ourPort, AF_INET);
+    int ourSocketIPv6 = setUpOurSocket(env, ourPort, AF_INET6);
+    if (ourSocketIPv4 < 0 && ourSocketIPv6 < 0) {
+        return nullptr;
+    }
+
+    return new RTSPServerImpl(env, ourSocketIPv4, ourSocketIPv6, ourPort, authDatabase, reclamationSeconds);
+}
+
+LiveRTSPServer::RTSPServerImpl::~RTSPServerImpl() {
+    LOG(INFO) << "RTSPServerImpl Dtor:" << name() << std::endl;
+}
+
+LiveRTSPServer::RTSPServerImpl::RTSPServerImpl(UsageEnvironment &env, int ourSocketIPv4, int ourSocketIPv6,
+        Port ourPort, UserAuthenticationDatabase *authDatabase, unsigned reclamationTestSeconds) :
+    RTSPServer(env, ourSocketIPv4, ourSocketIPv6, ourPort, authDatabase, reclamationTestSeconds) {
+    LOG(INFO) << "RTSPServerImpl Ctor";
+}
+
+void LiveRTSPServer::RTSPServerImpl::Close() {
+    Medium::close(this);
 }
 }

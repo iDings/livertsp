@@ -1,3 +1,5 @@
 rtsp server based on ffmpeg+live55
 https://avikdas.com/2019/12/16/makefiles-for-c-cpp-projects.html
 http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/
+https://abseil.io/tips/42
+https://stackoverflow.com/questions/26360916/using-custom-deleter-with-unique-ptr

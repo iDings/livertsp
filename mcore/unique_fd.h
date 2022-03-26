@@ -55,7 +55,7 @@ class unique_fd final {
   int value_;
 
   unique_fd(const unique_fd&) = delete;
-  unique_fd& operator=(const unique_fd&) = delete; 
+  unique_fd& operator=(const unique_fd&) = delete;
 };
 
 }  // namespace mcore
