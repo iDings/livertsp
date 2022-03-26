@@ -23,7 +23,7 @@ namespace LiveRTSP {
 
 class LiveRTSPServer {
 public:
-    static std::unique_ptr<LiveRTSPServer> MakeLiveRTSPServer(Port ourPort, unsigned reclamationSeconds);
+    static std::unique_ptr<LiveRTSPServer> MakeLiveRTSPServer(Port ourPort, unsigned reclamationSeconds, bool log_debug = false);
 
     ~LiveRTSPServer();
 
@@ -32,10 +32,15 @@ public:
 
     bool Start();
     bool Stop();
-    uint32_t Control(const std::string &msg);
+
+    // TODO:
+    // reliable control
+    // result notify callback
+    // cancelable
+    bool Control(const std::string &msg);
 
 protected:
-    LiveRTSPServer();
+    LiveRTSPServer(bool log_debug);
 
 private:
     class RTSPServerImpl : RTSPServer {
@@ -51,7 +56,7 @@ private:
 
     struct RTSPServerImplDeleter {
         void operator()(RTSPServerImpl *impl) {
-            LOG(INFO) << "Release RTSPServer Media";
+            LOG(INFO) << "Destroy RTSPServer";
             // Media::close will finally delete this
             impl->Close();
         }
@@ -60,24 +65,30 @@ private:
     struct UsageEnvironmentDeleter {
         void operator()(UsageEnvironment *env) {
             if (!env->reclaim())
-                LOG(INFO) << "-->reclaiming fail\n";
+                LOG(ERROR) << "-->reclaiming fail\n";
         }
     };
     using unique_rtspserver = std::unique_ptr<RTSPServerImpl, RTSPServerImplDeleter>;
     using unique_usageenv = std::unique_ptr<UsageEnvironment, UsageEnvironmentDeleter>;
 
 private:
-    bool Initialize(Port ourPort, unsigned reclamationSeconds);
     static void LiveTask(LiveRTSPServer *livertsp);
-    static void ControlProcess(LiveRTSPServer *livertsp, int mask);
+    static void ControlMethodDispatch(LiveRTSPServer *livertsp, int mask);
+
+    bool Initialize(Port ourPort, unsigned reclamationSeconds);
     bool Poking(std::vector<uint8_t> &messageBuf);
+
+    void ControlMethodInfo(const std::map<std::string, std::string> kv);
+    void ControlMethodStop(const std::map<std::string, std::string> kv);
 
     // RAII
     static uint32_t genid;
+    bool start;
+    char stoppedFlag;
+
     mcore::unique_fd pipe_r;
     mcore::unique_fd pipe_w;
     std::thread liveThread;
-    bool start;
     std::mutex startMutex;
     std::condition_variable startCondVar;
 
@@ -86,8 +97,10 @@ private:
     unique_rtspserver rtspServer;
 
     std::vector<uint8_t> messageBuf;
-    typedef std::function<void (const std::map<std::string,std::string> &keyval)> ControlHandler;
-    std::map<std::string, ControlHandler> controlMap;
-    char stoppedFlag;
+
+    using ControlHandler = std::function<void (const std::map<std::string,std::string> &keyval)>;
+    std::map<std::string, ControlHandler> controlMethodHandlerMap;
+
+    bool log_debug;
 };
 }

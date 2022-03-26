@@ -55,6 +55,7 @@ int main(int argc, char **argv) {
     lrs->Stop();
     lrs->Control("drop key0=val0 key1=val1 key2=val2");
 
+    LOG(INFO) << "--> Starting again";
     lrs->Start();
     lrs->Control("cmd2 key0=val0 key1=val1 key2=val2");
 

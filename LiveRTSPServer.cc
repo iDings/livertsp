@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <string.h>
+#include <algorithm>
 
 #include "easyloggingpp/easylogging++.h"
 #include "nlohmann/json.hpp"
@@ -23,8 +24,8 @@ struct MessageHeader {
 
 uint32_t LiveRTSPServer::genid = 0;
 
-std::unique_ptr<LiveRTSPServer> LiveRTSPServer::MakeLiveRTSPServer(Port ourPort, unsigned reclamationTestSeconds) {
-    std::unique_ptr<LiveRTSPServer> self(new LiveRTSPServer());
+std::unique_ptr<LiveRTSPServer> LiveRTSPServer::MakeLiveRTSPServer(Port ourPort, unsigned reclamationTestSeconds, bool log_debug) {
+    std::unique_ptr<LiveRTSPServer> self(new LiveRTSPServer(log_debug));
     if (!self || !self->Initialize(ourPort, reclamationTestSeconds)) {
         LOG(ERROR) << "Initialize Fail";
         return nullptr;
@@ -33,13 +34,13 @@ std::unique_ptr<LiveRTSPServer> LiveRTSPServer::MakeLiveRTSPServer(Port ourPort,
     return self;
 }
 
-LiveRTSPServer::LiveRTSPServer() :
-    start(false), stoppedFlag(0) {
-    LOG(INFO) << "LiveRTSPServer Ctor";
+LiveRTSPServer::LiveRTSPServer(bool log_debug) :
+    start(false), stoppedFlag(0), log_debug(log_debug) {
+    LOG_IF(log_debug, TRACE) << "LiveRTSPServer Ctor";
 }
 
 LiveRTSPServer::~LiveRTSPServer() {
-    LOG(INFO) << "LiveRTSPServer Dtor";
+    LOG_IF(log_debug, TRACE) << "LiveRTSPServer Dtor";
 }
 
 bool LiveRTSPServer::Initialize(Port ourPort, unsigned reclamationTestSeconds) {
@@ -60,15 +61,17 @@ bool LiveRTSPServer::Initialize(Port ourPort, unsigned reclamationTestSeconds) {
     rtspServer.reset(RTSPServerImpl::MakeRTSPServerImpl(*env, ourPort, NULL, reclamationTestSeconds));
     if (rtspServer == nullptr) return false;
 
+    controlMethodHandlerMap["info"] = std::bind(&LiveRTSPServer::ControlMethodInfo, this, std::placeholders::_1);
+    controlMethodHandlerMap["stop"] = [this](const std::map<std::string, std::string> kv) { ControlMethodStop(kv); };
+
     scheduler->setBackgroundHandling(pipe_r.get(), SOCKET_READABLE | SOCKET_EXCEPTION,
-            (TaskScheduler::BackgroundHandlerProc*)&ControlProcess, this);
+            (TaskScheduler::BackgroundHandlerProc*)&ControlMethodDispatch, this);
     return true;
 }
 
 // private static callback
 void LiveRTSPServer::LiveTask(LiveRTSPServer *lrs) {
-
-    LOG(INFO) << "LiveRTSP Running";
+    LOG(INFO) << "LiveRTSPTask Starting";
     {
         std::lock_guard<std::mutex> lock(lrs->startMutex);
         lrs->start = true;
@@ -79,38 +82,44 @@ void LiveRTSPServer::LiveTask(LiveRTSPServer *lrs) {
 
     lrs->start = false;
     lrs->stoppedFlag = 0;
-    LOG(INFO) << "LiveRTSP Running Done";
+    LOG(INFO) << "LiveRTSPTask Exited";
 }
 
+// TODO: wait timeout
 bool LiveRTSPServer::Start() {
     if (start) return true;
     if (stoppedFlag) return false;
-    LOG(INFO) << "Starting";
+    LOG_IF(log_debug, DEBUG) << "Starting";
 
     liveThread = std::thread(LiveTask, this);
     {
         std::unique_lock<std::mutex> lock(startMutex);
         startCondVar.wait(lock, [this] {return start;});
     }
-    LOG(INFO) << "Starting Done";
+
+    LOG_IF(log_debug, DEBUG) << "Starting Done";
     return true;
 }
 
+// TODO: review stop flow, selfdone
 bool LiveRTSPServer::Stop() {
     if (!start) return true;
     if (stoppedFlag) return true;
 
-    LOG(INFO) << "Stop";
-    stoppedFlag = 1;
-    std::string stop("stop");
-    Control(stop);
-    liveThread.join();
+    LOG_IF(log_debug, DEBUG) << "Stopping";
 
-    LOG(INFO) << "Stop Done";
+    if (liveThread.joinable()) {
+        stoppedFlag = 1;
+        std::string stop("stop");
+        Control(stop);
+        liveThread.join();
+    }
+
+    LOG_IF(log_debug, DEBUG) << "Stop Done";
     return true;
 }
 
-uint32_t LiveRTSPServer::Control(const std:: string &msg) {
+bool LiveRTSPServer::Control(const std:: string &msg) {
     if (!start) return false;
 
     MessageHeader message;
@@ -160,8 +169,18 @@ static void split(const std::string& s, std::vector<std::string>& tokens, const 
     }
 }
 
+void LiveRTSPServer::ControlMethodInfo(const std::map<std::string, std::string> kv) {
+    LOG(INFO) << "method: info";
+    return;
+}
+
+void LiveRTSPServer::ControlMethodStop(const std::map<std::string, std::string> kv) {
+    LOG(INFO) << "method: stop";
+    return;
+}
+
 // @LiveTask private static callback
-void LiveRTSPServer::ControlProcess(LiveRTSPServer *lrs, int mask) {
+void LiveRTSPServer::ControlMethodDispatch(LiveRTSPServer *lrs, int mask) {
     int ret;
     bool selfdone = false;
     uint8_t buf[1024];
@@ -204,7 +223,9 @@ void LiveRTSPServer::ControlProcess(LiveRTSPServer *lrs, int mask) {
         std::vector<std::string> tokens;
         split(command, tokens);
         if (!tokens.empty()) {
-            LOG(INFO) << "comamnd: " << tokens[0];
+            LOG_IF(lrs->log_debug, DEBUG) << "comamnd: " << tokens[0];
+            std::string &cmd = tokens[0];
+
             std::map<std::string, std::string> kvmap;
             for (auto &keyval : tokens) {
                 std::vector<std::string> kv;
@@ -213,8 +234,14 @@ void LiveRTSPServer::ControlProcess(LiveRTSPServer *lrs, int mask) {
                 kvmap[kv[0]] = kv[1];
             }
 
-            for (auto &kv : kvmap) {
-                LOG(INFO) << "key:" << kv.first << " val:" << kv.second;
+            for (auto &kv : kvmap) LOG_IF(lrs->log_debug, DEBUG) << "key:" << kv.first << " val:" << kv.second;
+            auto it = std::find_if(
+                    lrs->controlMethodHandlerMap.begin(), lrs->controlMethodHandlerMap.end(),
+                    [&](const std::pair<std::string, ControlHandler> &kf) { return kf.first == cmd; });
+            if (it != lrs->controlMethodHandlerMap.end()) {
+                it->second(kvmap);
+            } else {
+                LOG(WARNING) << "unsupport command:" << cmd;
             }
         }
 
@@ -245,13 +272,13 @@ LiveRTSPServer::RTSPServerImpl::MakeRTSPServerImpl(UsageEnvironment &env,
 }
 
 LiveRTSPServer::RTSPServerImpl::~RTSPServerImpl() {
-    LOG(INFO) << "RTSPServerImpl Dtor:" << name() << std::endl;
+    //LOG(INFO) << "RTSPServerImpl Dtor:" << name() << std::endl;
 }
 
 LiveRTSPServer::RTSPServerImpl::RTSPServerImpl(UsageEnvironment &env, int ourSocketIPv4, int ourSocketIPv6,
         Port ourPort, UserAuthenticationDatabase *authDatabase, unsigned reclamationTestSeconds) :
     RTSPServer(env, ourSocketIPv4, ourSocketIPv6, ourPort, authDatabase, reclamationTestSeconds) {
-    LOG(INFO) << "RTSPServerImpl Ctor";
+    //LOG(INFO) << "RTSPServerImpl Ctor";
 }
 
 void LiveRTSPServer::RTSPServerImpl::Close() {
