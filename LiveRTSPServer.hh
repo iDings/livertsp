@@ -19,6 +19,8 @@
 #include "GroupsockHelper.hh"
 #include "Media.hh"
 
+#include "LiveMediaFactory.hh"
+
 namespace LiveRTSP {
 
 class LiveRTSPServer {
@@ -118,13 +120,11 @@ private:
     std::unique_ptr<TaskScheduler> scheduler;
     unique_usageenv env;
     unique_rtspserver rtspServer;
-
     std::vector<uint8_t> messageBuf;
-
     using ControlHandlerKVMap = std::map<std::string, std::string>;
     using ControlHandler = std::function<bool (const std::map<std::string,std::string> &keyval)>;
     std::map<std::string, ControlHandler> controlMethodHandlerMap;
-
-    bool log_debug;
+    bool debug;
+    LiveMediaFactory mediaFactory;
 };
 }

@@ -14,6 +14,8 @@
 #include "StreamReplicator.hh"
 #include "ServerMediaSession.hh"
 
+#include "LiveMediaTypeDef.h"
+
 namespace LiveRTSP {
 enum message_type {
     TYPE_STRING = 0,
@@ -43,12 +45,12 @@ std::unique_ptr<LiveRTSPServer> LiveRTSPServer::MakeLiveRTSPServer(Port ourPort,
 }
 
 LiveRTSPServer::LiveRTSPServer(bool log_debug) :
-    start(false), stoppedFlag(0), log_debug(log_debug) {
+    start(false), stoppedFlag(0), debug(log_debug) {
     LOG_IF(log_debug, TRACE) << "LiveRTSPServer Ctor";
 }
 
 LiveRTSPServer::~LiveRTSPServer() {
-    LOG_IF(log_debug, TRACE) << "LiveRTSPServer Dtor";
+    LOG_IF(debug, TRACE) << "LiveRTSPServer Dtor";
 }
 
 bool LiveRTSPServer::Initialize(Port ourPort, unsigned reclamationTestSeconds) {
@@ -108,7 +110,7 @@ void LiveRTSPServer::LiveTask(LiveRTSPServer *lrs) {
 bool LiveRTSPServer::Start() {
     if (start) return true;
     if (stoppedFlag) return false;
-    LOG_IF(log_debug, DEBUG) << "Starting";
+    LOG_IF(debug, DEBUG) << "Starting";
 
     liveThread = std::thread(LiveTask, this);
     {
@@ -116,7 +118,7 @@ bool LiveRTSPServer::Start() {
         startCondVar.wait(lock, [this] {return start;});
     }
 
-    LOG_IF(log_debug, DEBUG) << "Starting Done";
+    LOG_IF(debug, DEBUG) << "Starting Done";
     return true;
 }
 
@@ -125,7 +127,7 @@ bool LiveRTSPServer::Stop() {
     if (!start) return true;
     if (stoppedFlag) return true;
 
-    LOG_IF(log_debug, DEBUG) << "Stopping";
+    LOG_IF(debug, DEBUG) << "Stopping";
 
     if (liveThread.joinable()) {
         stoppedFlag = 1;
@@ -134,7 +136,7 @@ bool LiveRTSPServer::Stop() {
         liveThread.join();
     }
 
-    LOG_IF(log_debug, DEBUG) << "Stop Done";
+    LOG_IF(debug, DEBUG) << "Stop Done";
     return true;
 }
 
@@ -188,6 +190,36 @@ static void split(const std::string& s, std::vector<std::string>& tokens, const 
     }
 }
 
+// type,key0:val0,key1:val0,key2:val2
+static void sessionParameterParse(const std::string &param, ParamTypeKeyValMap *tkv) {
+    if (param.empty()) return;
+
+    std::string::size_type tpos = param.find_first_of(',');
+    std::string::size_type kvpos = param.find_first_not_of(',', tpos);
+    if (tpos == std::string::npos || kvpos == std::string::npos) {
+        tkv->first = param.substr(0, tpos);
+        return;
+    }
+
+    tkv->first = param.substr(0, tpos);
+    std::vector<std::string> kvs;
+    do {
+        std::string::size_type nkvpos = param.find_first_of(',', kvpos);
+        if (nkvpos == std::string::npos) kvs.push_back(param.substr(kvpos));
+        else kvs.push_back(param.substr(kvpos, nkvpos - kvpos));
+
+        kvpos = param.find_first_not_of(',', nkvpos);
+    } while (kvpos != std::string::npos);
+
+    std::for_each(kvs.begin(), kvs.end(),
+            [tkv](const std::string &kv) {
+                std::vector<std::string> k_v;
+                split(kv, k_v, ":");
+                tkv->second[k_v[0]] = k_v[1];
+            });
+    return;
+}
+
 bool LiveRTSPServer::ControlMethodInfo(const std::map<std::string, std::string> &kv) {
     LOG(INFO) << "method: info";
     return true;
@@ -200,11 +232,13 @@ bool LiveRTSPServer::ControlMethodStop(const std::map<std::string, std::string> 
 
 bool LiveRTSPServer::ControlMethodAddSession(const std::map<std::string, std::string> &kv) {
     const std::string *session_name = nullptr;
-    const std::string *video_description = nullptr;
-    const std::string *audio_description = nullptr;
+    const std::string *video_param = nullptr;
+    const std::string *audio_param = nullptr;
+    const std::string *insrc_param = nullptr;
     std::string description;
-    std::string video_type;
-    std::string audio_type;
+    ParamTypeKeyValMap insrc_tkv;
+    ParamTypeKeyValMap video_tkv;
+    ParamTypeKeyValMap audio_tkv;
 
     auto name = std::find_if(kv.begin(), kv.end(),
             [](const std::pair<std::string, std::string> &pair) {
@@ -215,6 +249,16 @@ bool LiveRTSPServer::ControlMethodAddSession(const std::map<std::string, std::st
         return false;
     }
     session_name = &(name->second);
+
+    auto insrc = std::find_if(kv.begin(), kv.end(),
+            [](const std::pair<std::string, std::string> &pair) {
+                return pair.first == "insrc";
+            });
+    if (insrc == kv.end()) {
+        LOG(ERROR) << "need [insrc] key";
+        return false;
+    }
+    insrc_param = &(insrc->second);
 
     auto video = std::find_if(kv.begin(), kv.end(),
             [](const std::pair<std::string, std::string> &pair) {
@@ -232,32 +276,52 @@ bool LiveRTSPServer::ControlMethodAddSession(const std::map<std::string, std::st
     }
 
     // reference, or pointer
-    if (video != kv.end()) video_description = &(video->second);
-    if (audio != kv.end()) audio_description = &(audio->second);
-
-    // optional
-    auto insrc = std::find_if(kv.begin(), kv.end(),
-            [](const std::pair<std::string, std::string> &pair) {
-                return pair.first == "insrc";
-            });
-    if (insrc != kv.end()) {
-    } else {
+    if (video != kv.end()) {
+        video_param = &(video->second);
     }
 
-    std::time_t t = time(NULL);
-    std::tm tm{};
-    char date[32]{};
-    strftime(date, sizeof(date), "%a, %d %b %Y %H:%M:%S %Z", gmtime_r(&t, &tm));
+    if (audio != kv.end()) {
+        audio_param = &(audio->second);
+    }
 
-    if (video_description) description += "video:" + *video_description;
-    if (audio_description) description += ",audio:" + *audio_description;
+    sessionParameterParse(*insrc_param, &insrc_tkv);
+    LOG_IF(debug, DEBUG) << "insrc type:" << insrc_tkv.first;
+    std::for_each(insrc_tkv.second.begin(), insrc_tkv.second.end(),
+            [this](const std::pair<std::string, std::string> &pair) {
+                LOG_IF(debug, DEBUG) << " param:" << pair.first << ":" << pair.second;
+            });
+
+    if (video_param) {
+        sessionParameterParse(*video_param, &video_tkv);
+        LOG_IF(debug, DEBUG) << "video type:" << video_tkv.first;
+        std::for_each(video_tkv.second.begin(), video_tkv.second.end(),
+                [this](const std::pair<std::string, std::string> &pair) {
+                    LOG_IF(debug, DEBUG) << " param:" << pair.first << ":" << pair.second;
+                });
+    }
+    if (audio_param) {
+        sessionParameterParse(*audio_param, &audio_tkv);
+        LOG_IF(debug, DEBUG) << "audio type:" << audio_tkv.first;
+        std::for_each(audio_tkv.second.begin(), audio_tkv.second.end(),
+                [this](const std::pair<std::string, std::string> &pair) {
+                    LOG_IF(debug, DEBUG) << " param:" << pair.first << ":" << pair.second;
+                });
+    }
+
+    if (video_param) description += "video:" + *video_param;
+    if (audio_param) description += ",audio:" + *audio_param;
     description += ",streamed by LiveRTSP(live555)";
 
-    ServerMediaSession *sms = ServerMediaSession::createNew(*env.get(),
-            session_name->c_str(), date, description.c_str(), false, NULL);
-    //sms->addSubsession();
+    ServerMediaSession *sms = mediaFactory.MakeServerMediaSession(*env,
+                                *session_name, description, insrc_tkv, video_tkv, audio_tkv);
+    if (!sms) {
+        LOG(ERROR) << "add_session make media session error";
+        return false;
+    }
 
-    LOG(INFO) << "add_session " << *session_name << " " << description;
+    //LOG(INFO) << "add_session " << *session_name << " insrc:"
+    //    << *insrc_param << " v:" << (video_param ? *video_param : "")
+    //    << " a:" << (audio_param ? *audio_param : "");
     rtspServer->addServerMediaSession(sms);
     return true;
 }
@@ -320,7 +384,7 @@ void LiveRTSPServer::ControlMethodDispatch(LiveRTSPServer *lrs, int mask) {
         std::vector<std::string> tokens;
         split(command, tokens);
         if (!tokens.empty()) {
-            LOG_IF(lrs->log_debug, DEBUG) << "comamnd: " << tokens[0];
+            LOG_IF(lrs->debug, DEBUG) << "comamnd: " << tokens[0];
             std::string &cmd = tokens[0];
 
             std::map<std::string, std::string> kvmap;
@@ -331,7 +395,7 @@ void LiveRTSPServer::ControlMethodDispatch(LiveRTSPServer *lrs, int mask) {
                 kvmap[kv[0]] = kv[1];
             }
 
-            for (auto &kv : kvmap) LOG_IF(lrs->log_debug, DEBUG) << "key:" << kv.first << " val:" << kv.second;
+            for (auto &kv : kvmap) LOG_IF(lrs->debug, DEBUG) << "key:" << kv.first << " val:" << kv.second;
             auto it = std::find_if(
                     lrs->controlMethodHandlerMap.begin(), lrs->controlMethodHandlerMap.end(),
                     [&](const std::pair<std::string, ControlHandler> &kf) {

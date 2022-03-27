@@ -41,14 +41,16 @@ int main(int argc, char **argv) {
 
     portNumBits rtspServerPortNum = 8554;
     unsigned reclamationTestSeconds = 60;
-    std::unique_ptr<LiveRTSPServer> lrs = LiveRTSPServer::MakeLiveRTSPServer(rtspServerPortNum, reclamationTestSeconds, true);
+    bool debug = true;
+    std::unique_ptr<LiveRTSPServer> lrs =
+        LiveRTSPServer::MakeLiveRTSPServer(rtspServerPortNum, reclamationTestSeconds, debug);
     if (lrs == NULL) {
         LOG(ERROR) << "make live rtsp server port " << rtspServerPortNum << " failure";
         exit(1);
     }
 
     lrs->Start();
-    lrs->Control("add_session name=livestream0 video=h264");
+    lrs->Control("add_session name=livestream0 insrc=ffmpeg video=h264,width:640,heigh:480");
 
     while (running) {
         sleep(1);

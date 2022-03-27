@@ -52,7 +52,9 @@ MEDIA_SERVER_CC_SRCS = Main.cc \
 					   H264LiveMediaSubsession.cc \
 					   H265LiveMediaSubsession.cc \
 					   SimpleLiveMediaSubsession.cc \
-					   ADTSLiveMediaSubsession.cc
+					   ADTSLiveMediaSubsession.cc \
+					   LiveMediaFactory.cc \
+					   FFH264InputSource.cc
 
 MEDIA_SERVER_OBJS = $(MEDIA_SERVER_C_SRCS:%.c=%.o) $(MEDIA_SERVER_CC_SRCS:%.cc=%.o) $(EASYLOGGING_CC_SRCS:.cc=.o)
 DEPFILES := $(MEDIA_SERVER_C_SRCS:%.c=$(DESTDIR)/%.d) $(MEDIA_SERVER_CC_SRCS:%.cc=$(DEPDIR)/%.d)
