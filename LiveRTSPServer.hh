@@ -34,6 +34,7 @@ public:
     bool Stop();
 
     // TODO:
+    // message string builder
     // reliable control
     // result notify callback
     // cancelable
@@ -43,7 +44,7 @@ protected:
     LiveRTSPServer(bool log_debug);
 
 private:
-    class RTSPServerImpl : RTSPServer {
+    class RTSPServerImpl : public RTSPServer {
         public:
             static RTSPServerImpl *MakeRTSPServerImpl(UsageEnvironment &env,
                     Port ourPort, UserAuthenticationDatabase *authDatabase, unsigned reclamationSeconds);
@@ -78,8 +79,30 @@ private:
     bool Initialize(Port ourPort, unsigned reclamationSeconds);
     bool Poking(std::vector<uint8_t> &messageBuf);
 
-    void ControlMethodInfo(const std::map<std::string, std::string> kv);
-    void ControlMethodStop(const std::map<std::string, std::string> kv);
+    /**
+     * info
+     *
+     * @param kv ignore
+     */
+    bool ControlMethodInfo(const std::map<std::string, std::string> &kv);
+    /**
+     * stop
+     *
+     * @param kv ignore
+     */
+    bool ControlMethodStop(const std::map<std::string, std::string> &kv);
+    /**
+     * add_session
+     *
+     * @param kv name= input=ffmpeg video= audio=
+     */
+    bool ControlMethodAddSession(const std::map<std::string, std::string> &kv);
+    /**
+     * del_session
+     *
+     * @param kv name=
+     */
+    bool ControlMethodDelSession(const std::map<std::string, std::string> &kv);
 
     // RAII
     static uint32_t genid;
@@ -98,7 +121,8 @@ private:
 
     std::vector<uint8_t> messageBuf;
 
-    using ControlHandler = std::function<void (const std::map<std::string,std::string> &keyval)>;
+    using ControlHandlerKVMap = std::map<std::string, std::string>;
+    using ControlHandler = std::function<bool (const std::map<std::string,std::string> &keyval)>;
     std::map<std::string, ControlHandler> controlMethodHandlerMap;
 
     bool log_debug;

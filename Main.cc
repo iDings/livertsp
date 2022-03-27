@@ -41,28 +41,20 @@ int main(int argc, char **argv) {
 
     portNumBits rtspServerPortNum = 8554;
     unsigned reclamationTestSeconds = 60;
-    std::unique_ptr<LiveRTSPServer> lrs = LiveRTSPServer::MakeLiveRTSPServer(rtspServerPortNum, reclamationTestSeconds);
+    std::unique_ptr<LiveRTSPServer> lrs = LiveRTSPServer::MakeLiveRTSPServer(rtspServerPortNum, reclamationTestSeconds, true);
     if (lrs == NULL) {
         LOG(ERROR) << "make live rtsp server port " << rtspServerPortNum << " failure";
         exit(1);
     }
 
     lrs->Start();
-
-    lrs->Control("cmd key0=val0 key1=val1 key2=val2");
-    lrs->Control("cmd1 key0=val0 key1=val1 key2=val2");
-
-    lrs->Stop();
-    lrs->Control("drop key0=val0 key1=val1 key2=val2");
-
-    LOG(INFO) << "--> Starting again";
-    lrs->Start();
-    lrs->Control("cmd2 key0=val0 key1=val1 key2=val2");
+    lrs->Control("add_session name=livestream0 video=h264");
 
     while (running) {
         sleep(1);
     }
 
+    //lrs->Control("del_session name=livestream0");
     lrs->Stop();
     return 0;
 }

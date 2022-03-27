@@ -5,11 +5,14 @@
 #include <limits.h>
 #include <string.h>
 #include <algorithm>
+#include <ctime>
 
 #include "easyloggingpp/easylogging++.h"
 #include "nlohmann/json.hpp"
+#include "mcore/string_format.h"
 
 #include "StreamReplicator.hh"
+#include "ServerMediaSession.hh"
 
 namespace LiveRTSP {
 enum message_type {
@@ -21,6 +24,11 @@ struct MessageHeader {
     uint32_t length;
     int8_t type;
 };
+
+static const char *kControlMethodInfo = "info";
+static const char *kControlMethodStop = "stop";
+static const char *kControlMethodAddSession = "add_session";
+static const char *kControlMethodDelSession = "del_session";
 
 uint32_t LiveRTSPServer::genid = 0;
 
@@ -61,8 +69,19 @@ bool LiveRTSPServer::Initialize(Port ourPort, unsigned reclamationTestSeconds) {
     rtspServer.reset(RTSPServerImpl::MakeRTSPServerImpl(*env, ourPort, NULL, reclamationTestSeconds));
     if (rtspServer == nullptr) return false;
 
-    controlMethodHandlerMap["info"] = std::bind(&LiveRTSPServer::ControlMethodInfo, this, std::placeholders::_1);
-    controlMethodHandlerMap["stop"] = [this](const std::map<std::string, std::string> kv) { ControlMethodStop(kv); };
+    controlMethodHandlerMap[kControlMethodInfo] = std::bind(&LiveRTSPServer::ControlMethodInfo, this, std::placeholders::_1);
+    controlMethodHandlerMap[kControlMethodStop] =
+        [this](const std::map<std::string, std::string> &kv) {
+            return ControlMethodStop(kv);
+        };
+    controlMethodHandlerMap[kControlMethodAddSession] =
+        [this](const std::map<std::string, std::string> &kv) {
+            return ControlMethodAddSession(kv);
+        };
+    controlMethodHandlerMap[kControlMethodDelSession] =
+        [this](const std::map<std::string, std::string> &kv) {
+            return ControlMethodDelSession(kv);
+        };
 
     scheduler->setBackgroundHandling(pipe_r.get(), SOCKET_READABLE | SOCKET_EXCEPTION,
             (TaskScheduler::BackgroundHandlerProc*)&ControlMethodDispatch, this);
@@ -169,14 +188,92 @@ static void split(const std::string& s, std::vector<std::string>& tokens, const 
     }
 }
 
-void LiveRTSPServer::ControlMethodInfo(const std::map<std::string, std::string> kv) {
+bool LiveRTSPServer::ControlMethodInfo(const std::map<std::string, std::string> &kv) {
     LOG(INFO) << "method: info";
-    return;
+    return true;
 }
 
-void LiveRTSPServer::ControlMethodStop(const std::map<std::string, std::string> kv) {
+bool LiveRTSPServer::ControlMethodStop(const std::map<std::string, std::string> &kv) {
     LOG(INFO) << "method: stop";
-    return;
+    return true;
+}
+
+bool LiveRTSPServer::ControlMethodAddSession(const std::map<std::string, std::string> &kv) {
+    const std::string *session_name = nullptr;
+    const std::string *video_description = nullptr;
+    const std::string *audio_description = nullptr;
+    std::string description;
+    std::string video_type;
+    std::string audio_type;
+
+    auto name = std::find_if(kv.begin(), kv.end(),
+            [](const std::pair<std::string, std::string> &pair) {
+                return pair.first == "name";
+            });
+    if (name == kv.end()) {
+        LOG(ERROR) << "need [name] key";
+        return false;
+    }
+    session_name = &(name->second);
+
+    auto video = std::find_if(kv.begin(), kv.end(),
+            [](const std::pair<std::string, std::string> &pair) {
+                return pair.first == std::string("video");
+            });
+    auto audio = std::find_if(kv.begin(), kv.end(),
+            [](const std::pair<std::string, std::string> &pair) {
+                return pair.first == "audio";
+            });
+
+    if ((video == kv.end() || video->second.empty()) &&
+            (audio == kv.end() || audio->second.empty())) {
+        LOG(ERROR) << "need video or audio parameter";
+        return false;
+    }
+
+    // reference, or pointer
+    if (video != kv.end()) video_description = &(video->second);
+    if (audio != kv.end()) audio_description = &(audio->second);
+
+    // optional
+    auto insrc = std::find_if(kv.begin(), kv.end(),
+            [](const std::pair<std::string, std::string> &pair) {
+                return pair.first == "insrc";
+            });
+    if (insrc != kv.end()) {
+    } else {
+    }
+
+    std::time_t t = time(NULL);
+    std::tm tm{};
+    char date[32]{};
+    strftime(date, sizeof(date), "%a, %d %b %Y %H:%M:%S %Z", gmtime_r(&t, &tm));
+
+    if (video_description) description += "video:" + *video_description;
+    if (audio_description) description += ",audio:" + *audio_description;
+    description += ",streamed by LiveRTSP(live555)";
+
+    ServerMediaSession *sms = ServerMediaSession::createNew(*env.get(),
+            session_name->c_str(), date, description.c_str(), false, NULL);
+    //sms->addSubsession();
+
+    LOG(INFO) << "add_session " << *session_name << " " << description;
+    rtspServer->addServerMediaSession(sms);
+    return true;
+}
+
+bool LiveRTSPServer::ControlMethodDelSession(const std::map<std::string, std::string> &kv) {
+    auto name = std::find_if(kv.begin(), kv.end(),
+            [](const std::pair<std::string, std::string> &pair) {
+                return pair.first == "name";
+            });
+    if (name == kv.end()) {
+        LOG(ERROR) << "need [name] key";
+        return true;
+    }
+
+    rtspServer->removeServerMediaSession(name->second.c_str());
+    return true;
 }
 
 // @LiveTask private static callback
@@ -237,7 +334,9 @@ void LiveRTSPServer::ControlMethodDispatch(LiveRTSPServer *lrs, int mask) {
             for (auto &kv : kvmap) LOG_IF(lrs->log_debug, DEBUG) << "key:" << kv.first << " val:" << kv.second;
             auto it = std::find_if(
                     lrs->controlMethodHandlerMap.begin(), lrs->controlMethodHandlerMap.end(),
-                    [&](const std::pair<std::string, ControlHandler> &kf) { return kf.first == cmd; });
+                    [&](const std::pair<std::string, ControlHandler> &kf) {
+                        return kf.first == cmd;
+                    });
             if (it != lrs->controlMethodHandlerMap.end()) {
                 it->second(kvmap);
             } else {
