@@ -9,6 +9,7 @@ LiveMediaSubsession::LiveMediaSubsession(UsageEnvironment &env, StreamReplicator
 }
 
 LiveMediaSubsession::~LiveMediaSubsession() {
-    LOG(DEBUG) << "~LiveMediaSubsession";
+    LOG(DEBUG) << "~LiveMediaSubsession: numReplicas:" << replicator->numReplicas();
+    if (!replicator->numReplicas()) Medium::close(replicator);
 }
 }

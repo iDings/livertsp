@@ -42,14 +42,14 @@ ServerMediaSession *LiveMediaFactory::MakeServerMediaSession(UsageEnvironment &e
     LiveMediaInputSourceTypeCreator &lmis = insrcs[insrc_tkv.first];
     if (!video_tkv.first.empty()) {
         LiveMediaInputSource *vinput = lmis[video_tkv.first](env, video_tkv);
-        StreamReplicator *replicator = StreamReplicator::createNew(env, vinput);
+        StreamReplicator *replicator = StreamReplicator::createNew(env, vinput, False);
         LiveMediaSubsession *lms = subsess[video_tkv.first](env, replicator, video_tkv);
         sms->addSubsession(lms);
     }
 
     if (!audio_tkv.first.empty()) {
         LiveMediaInputSource *ainput = lmis[audio_tkv.first](env, audio_tkv);
-        StreamReplicator *replicator = StreamReplicator::createNew(env, ainput);
+        StreamReplicator *replicator = StreamReplicator::createNew(env, ainput, False);
         LiveMediaSubsession *lms = subsess[audio_tkv.first](env, replicator, audio_tkv);
         sms->addSubsession(lms);
     }

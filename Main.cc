@@ -30,7 +30,7 @@ const char *get_systid(const el::LogMessage *) {
 int main(int argc, char **argv) {
     START_EASYLOGGINGPP(argc, argv);
     el::Helpers::installCustomFormatSpecifier(el::CustomFormatSpecifier("%tid", get_systid));
-    el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format, "%datetime %tid %logger/%level %msg");
+    el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format, "%datetime %tid %logger/%level %loc %msg");
     LOG(INFO) << "Starting Live Streaming";
 
     struct sigaction sa;

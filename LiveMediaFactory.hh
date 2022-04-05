@@ -33,7 +33,7 @@ private:
         LiveMediaSubsession *(UsageEnvironment &env, StreamReplicator *replicator, const ParamTypeKeyValMap &tkv)>;
     using LiveMediaInputSourceTypeCreator = std::map<std::string, LiveMediaInputSourceCreator>;
 
-    // TODO: use struct?
+    // TODO: use abstract interface
     std::map<std::string, LiveMediaInputSourceTypeCreator> insrcs;
     std::map<std::string, LiveMediaSubsessionCreator> subsess;
 };
