@@ -30,7 +30,7 @@ LIBS_FOR_GUI_APPLICATION =
 EXE =
 ##### End of variables to change
 
-MEDIA_SERVER = fflive
+MEDIA_SERVER = livertsp
 
 ALL = live555 $(MEDIA_SERVER)
 all: $(ALL)
@@ -54,6 +54,8 @@ MEDIA_SERVER_CC_SRCS = Main.cc \
 					   SimpleLiveMediaSubsession.cc \
 					   ADTSLiveMediaSubsession.cc \
 					   LiveMediaFactory.cc \
+					   LiveMediaSubsession.cc \
+					   LiveMediaInputSource.cc \
 					   FFH264InputSource.cc
 
 MEDIA_SERVER_OBJS = $(MEDIA_SERVER_C_SRCS:%.c=%.o) $(MEDIA_SERVER_CC_SRCS:%.cc=%.o) $(EASYLOGGING_CC_SRCS:.cc=.o)

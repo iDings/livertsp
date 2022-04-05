@@ -5,15 +5,16 @@
 
 namespace LiveRTSP {
 
-H264LiveMediaSubsession *H264LiveMediaSubsession::createNew(UsageEnvironment &env, StreamReplicator &replicator)
+H264LiveMediaSubsession *H264LiveMediaSubsession::createNew(
+        UsageEnvironment &env, StreamReplicator *replicator, const ParamTypeKeyValMap &tkv)
 {
     H264LiveMediaSubsession *self = new H264LiveMediaSubsession(env, replicator);
     return self;
 }
 
-H264LiveMediaSubsession::H264LiveMediaSubsession(UsageEnvironment &env, StreamReplicator &replicator) :
-    OnDemandServerMediaSubsession(env, False),
-    replicator(replicator), pollingDoneFlag(0), pollingCount(0), dummyRTPSink(NULL)
+H264LiveMediaSubsession::H264LiveMediaSubsession(UsageEnvironment &env, StreamReplicator *replicator) :
+    LiveMediaSubsession(env, replicator),
+    pollingDoneFlag(0), pollingCount(0), dummyRTPSink(NULL)
 {
     LOG(INFO) << "H264LiveMediaSubsession";
 }
@@ -86,7 +87,7 @@ char const *H264LiveMediaSubsession::getAuxSDPLine(RTPSink *rtpSink, FramedSourc
 FramedSource *H264LiveMediaSubsession::createNewStreamSource(unsigned clientSessionId, unsigned &estBitrate) {
     LOG(INFO) << "createNewStreamSource";
     estBitrate = 1000; // kps, estimate
-    FramedSource *source = replicator.createStreamReplica();
+    FramedSource *source = streamReplicator().createStreamReplica();
     return H264VideoStreamDiscreteFramer::createNew(envir(), source);
 }
 

@@ -71,8 +71,8 @@ private:
                 LOG(ERROR) << "-->reclaiming fail\n";
         }
     };
-    using unique_rtspserver = std::unique_ptr<RTSPServerImpl, RTSPServerImplDeleter>;
-    using unique_usageenv = std::unique_ptr<UsageEnvironment, UsageEnvironmentDeleter>;
+    using RTSPServerImplUnique = std::unique_ptr<RTSPServerImpl, RTSPServerImplDeleter>;
+    using UsageEnvUnique = std::unique_ptr<UsageEnvironment, UsageEnvironmentDeleter>;
 
 private:
     static void LiveTask(LiveRTSPServer *livertsp);
@@ -118,8 +118,8 @@ private:
     std::condition_variable startCondVar;
 
     std::unique_ptr<TaskScheduler> scheduler;
-    unique_usageenv env;
-    unique_rtspserver rtspServer;
+    UsageEnvUnique env;
+    RTSPServerImplUnique rtspServer;
     std::vector<uint8_t> messageBuf;
     using ControlHandlerKVMap = std::map<std::string, std::string>;
     using ControlHandler = std::function<bool (const std::map<std::string,std::string> &keyval)>;

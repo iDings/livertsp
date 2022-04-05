@@ -8,10 +8,11 @@
 namespace LiveRTSP {
 class FFH264InputSource : public LiveMediaInputSource {
 public:
-    static std::unique_ptr<LiveMediaInputSource> MakeUnique(UsageEnvironment &env, const ParamTypeKeyValMap &tkv);
+    static FFH264InputSource *CreateNew(UsageEnvironment &env, const ParamTypeKeyValMap &tkv);
 protected:
     FFH264InputSource(UsageEnvironment &env);
     ~FFH264InputSource();
 private:
+    virtual void doGetNextFrame();
 };
 }

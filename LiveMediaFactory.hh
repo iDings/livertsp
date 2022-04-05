@@ -28,11 +28,13 @@ public:
 
 private:
     using LiveMediaInputSourceCreator = std::function<
-        std::unique_ptr<LiveMediaInputSource>(UsageEnvironment &env, const ParamTypeKeyValMap &tkv)>;
+        LiveMediaInputSource *(UsageEnvironment &env, const ParamTypeKeyValMap &tkv)>;
     using LiveMediaSubsessionCreator = std::function<
-        std::unique_ptr<LiveMediaSubsession>(UsageEnvironment &env, StreamReplicator &replicator, const ParamTypeKeyValMap &tkv)>;
-    using InputSourceTypeCreator = std::map<std::string, LiveMediaInputSourceCreator>;
-    std::map<std::string, InputSourceTypeCreator> inputSources;
-    std::map<std::string, LiveMediaSubsessionCreator> subsessions;
+        LiveMediaSubsession *(UsageEnvironment &env, StreamReplicator *replicator, const ParamTypeKeyValMap &tkv)>;
+    using LiveMediaInputSourceTypeCreator = std::map<std::string, LiveMediaInputSourceCreator>;
+
+    // TODO: use struct?
+    std::map<std::string, LiveMediaInputSourceTypeCreator> insrcs;
+    std::map<std::string, LiveMediaSubsessionCreator> subsess;
 };
 }

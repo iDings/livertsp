@@ -4,18 +4,21 @@
 
 #include "OnDemandServerMediaSubsession.hh"
 #include "StreamReplicator.hh"
+#include "LiveMediaTypeDef.h"
+#include "LiveMediaSubsession.hh"
 
 namespace LiveRTSP {
-class H264LiveMediaSubsession : public OnDemandServerMediaSubsession {
+class H264LiveMediaSubsession : public LiveMediaSubsession {
 public:
-    static H264LiveMediaSubsession *createNew(UsageEnvironment &env, StreamReplicator &replicator);
+    static H264LiveMediaSubsession *
+        createNew(UsageEnvironment &env, StreamReplicator *replicator, const ParamTypeKeyValMap &tkv);
 
     // Used to implement "getAuxSDPLine()":
     void pollingAuxSDPLine1();
     void afterPlayingDummy1();
 
 protected:
-    H264LiveMediaSubsession(UsageEnvironment &env, StreamReplicator &replicator);
+    H264LiveMediaSubsession(UsageEnvironment &env, StreamReplicator *replicator);
     virtual ~H264LiveMediaSubsession();
 
     void setDoneFlag() { pollingDoneFlag = ~0; pollingCount = 0; }
@@ -27,7 +30,6 @@ protected:
             unsigned char rtpPayloadTypeIfDynamic, FramedSource* inputSource) override;
 
 private:
-    StreamReplicator &replicator;
     std::string auxSDPLine;
     char pollingDoneFlag;
     int pollingCount;
