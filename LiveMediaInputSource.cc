@@ -3,10 +3,10 @@
 
 namespace LiveRTSP {
 LiveMediaInputSource::LiveMediaInputSource(UsageEnvironment &env) : FramedSource(env) {
-    LOG(INFO) << "+LiveMediaInputSource";
+    //LOG(INFO) << "+LiveMediaInputSource";
 }
 
 LiveMediaInputSource::~LiveMediaInputSource() {
-    LOG(INFO) << "~LiveMediaInputSource";
+    //LOG(INFO) << "~LiveMediaInputSource";
 }
 }

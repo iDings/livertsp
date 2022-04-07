@@ -6,7 +6,7 @@ libBasicUsageEnvironment_LIB_SUFFIX = $(LIB_SUFFIX)
 libUsageEnvironment_LIB_SUFFIX = $(LIB_SUFFIX)
 libgroupsock_LIB_SUFFIX = $(LIB_SUFFIX)
 ##### Change the following for your environment:
-COMPILE_OPTS =		$(INCLUDES) -I. -g -O2 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64 -DNO_OPENSSL=1
+COMPILE_OPTS =		$(INCLUDES) -I. -g -O0 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64 -DNO_OPENSSL=1
 C =			c
 C_COMPILER =		cc
 C_FLAGS =		$(COMPILE_OPTS) $(CPPFLAGS) $(CFLAGS)

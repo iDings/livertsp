@@ -40,8 +40,8 @@ int main(int argc, char **argv) {
     sigaction(SIGINT, &sa, NULL);
 
     portNumBits rtspServerPortNum = 8554;
-    unsigned reclamationTestSeconds = 60;
-    bool debug = true;
+    unsigned reclamationTestSeconds = 30;
+    bool debug = false;
     std::unique_ptr<LiveRTSPServer> lrs =
         LiveRTSPServer::MakeLiveRTSPServer(rtspServerPortNum, reclamationTestSeconds, debug);
     if (lrs == NULL) {

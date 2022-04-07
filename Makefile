@@ -11,7 +11,7 @@ libgroupsock_LIB_SUFFIX = $(LIB_SUFFIX)
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
 EASYLOGGING_FLAGS = -DELPP_THREAD_SAFE
 
-COMPILE_OPTS =	-g $(EASYLOGGING_FLAGS) $(DEPFLAGS) $(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O2 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
+COMPILE_OPTS =	-g $(EASYLOGGING_FLAGS) $(DEPFLAGS) $(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O0 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
 C =			c
 C_COMPILER =		cc
 C_FLAGS =		$(COMPILE_OPTS)  -fsanitize=address -fno-omit-frame-pointer
@@ -19,18 +19,18 @@ CPP =			cpp
 CPLUSPLUS_COMPILER =	c++
 CPLUSPLUS_FLAGS = -std=c++11 $(COMPILE_OPTS) -Wall -DBSD=1 -Wno-range-loop-construct  -fsanitize=address -fno-omit-frame-pointer
 OBJ =			o
-LINK =			c++ -o
+LINK =			c++ -Wl,-v -o
 LINK_OPTS =		-L. -fsanitize=address -fno-omit-frame-pointer
 CONSOLE_LINK_OPTS =	$(LINK_OPTS)
 LIBRARY_LINK =		ar cr
 LIBRARY_LINK_OPTS =
 LIB_SUFFIX =			a
-LIBS_FOR_CONSOLE_APPLICATION =
+LIBS_FOR_CONSOLE_APPLICATION = -lavcodec -lavutil -lavformat -lavdevice
 LIBS_FOR_GUI_APPLICATION =
 EXE =
 ##### End of variables to change
 
-MEDIA_SERVER = livertsp
+MEDIA_SERVER = LiveRTSP
 
 ALL = live555 $(MEDIA_SERVER)
 all: $(ALL)
@@ -60,7 +60,7 @@ MEDIA_SERVER_CC_SRCS = Main.cc \
 
 MEDIA_SERVER_OBJS = $(MEDIA_SERVER_C_SRCS:%.c=%.o) $(MEDIA_SERVER_CC_SRCS:%.cc=%.o) $(EASYLOGGING_CC_SRCS:.cc=.o)
 DEPFILES := $(MEDIA_SERVER_C_SRCS:%.c=$(DESTDIR)/%.d) $(MEDIA_SERVER_CC_SRCS:%.cc=$(DEPDIR)/%.d)
-$(info $(DEPFILES))
+#$(info $(DEPFILES))
 
 USAGE_ENVIRONMENT_DIR = $(LIVE555_DIR)/UsageEnvironment
 USAGE_ENVIRONMENT_LIB = $(USAGE_ENVIRONMENT_DIR)/libUsageEnvironment.$(libUsageEnvironment_LIB_SUFFIX)

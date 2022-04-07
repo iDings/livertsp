@@ -5,11 +5,11 @@ namespace LiveRTSP {
 LiveMediaSubsession::LiveMediaSubsession(UsageEnvironment &env, StreamReplicator *replicator) :
     OnDemandServerMediaSubsession(env, False),
     replicator(replicator) {
-    LOG(DEBUG) << "+LiveMediaSubsession";
+    //LOG(DEBUG) << "+LiveMediaSubsession";
 }
 
 LiveMediaSubsession::~LiveMediaSubsession() {
-    LOG(DEBUG) << "~LiveMediaSubsession: numReplicas:" << replicator->numReplicas();
+    //LOG(DEBUG) << "~LiveMediaSubsession: numReplicas:" << replicator->numReplicas();
     if (!replicator->numReplicas()) Medium::close(replicator);
 }
 }
