@@ -7,14 +7,14 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <sys/stat.h>
 
 extern "C" {
 #include <libavutil/pixdesc.h>
+#include <libavutil/imgutils.h>
 }
 
 namespace LiveRTSP {
-static int decode_packet(AVCodecContext *dec, const AVPacket *pkt, AVFrame *fram);
-
 FFH264InputSource *FFH264InputSource::CreateNew(UsageEnvironment &env, const ParamTypeKeyValMap &video_tkv) {
     FFH264InputSource *self = new FFH264InputSource(env);
     if (!self->initialize(video_tkv)) {
@@ -26,14 +26,23 @@ FFH264InputSource *FFH264InputSource::CreateNew(UsageEnvironment &env, const Par
 }
 
 FFH264InputSource::FFH264InputSource(UsageEnvironment &env) :
-        LiveMediaInputSource(env), width(480), height(360), framerate(15),
+        LiveMediaInputSource(env), width(480), height(360), framerate(15), dumpfile(true), pgm(false),
         device("/dev/video0"), started(false), decoding(false), encoding(false) {
     //LOG(DEBUG) << "+FFH264InputSource";
     FFGlobal::Init();
+    selfDestructTriggerId = envir().taskScheduler().createEventTrigger(FFH264InputSource::selfDestructTriggerHandler);
 }
 
 FFH264InputSource::~FFH264InputSource() {
     //LOG(DEBUG) << "~FFH264InputSource";
+    envir().taskScheduler().deleteEventTrigger(selfDestructTriggerId);
+}
+
+// trigger close to cleanup if something errors
+void FFH264InputSource::selfDestructTriggerHandler(void *udata) {
+    FFH264InputSource *thiz = (FFH264InputSource *)udata;
+    thiz->handleClosure();
+    return;
 }
 
 bool FFH264InputSource::initialize(const ParamTypeKeyValMap &tkv) {
@@ -46,6 +55,7 @@ bool FFH264InputSource::initialize(const ParamTypeKeyValMap &tkv) {
     return true;
 }
 
+// seperate reading + decoding, just rawvideo, decoding seems fine
 void FFH264InputSource::decodingTask(AVFormatContext *fmtctx, AVCodecContext *decctx) {
     LOG(INFO) << "bringup decoding task";
     int ret = 0;
@@ -65,24 +75,23 @@ void FFH264InputSource::decodingTask(AVFormatContext *fmtctx, AVCodecContext *de
             break;
         }
 
-        ret = decode_packet(decctx, pkt, frame);
+        ret = decodePacket(decctx, pkt, frame);
         av_packet_unref(pkt);
         if (ret < 0) {
-            LOG(ERROR) << "decode_packet fail:" << ret;
+            LOG(ERROR) << "decodePacket fail:" << ret;
             break;
         }
     }
-
-    // flush
-    decode_packet(decctx, NULL, frame);
 
     av_frame_free(&frame);
     av_packet_free(&pkt);
     avcodec_free_context(&decctx);
     avformat_close_input(&fmtctx);
 
-    // TODO: waiting recyle
+    // waiting recyle
     if (decoding) {
+        envir().taskScheduler().triggerEvent(selfDestructTriggerId, this);
+
         do {
             sched_yield();
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -103,10 +112,11 @@ static int open_codec_context(int *stream_idx, AVCodecContext **dec_ctx, AVForma
     int ret, stream_index;
     AVStream *st;
     const AVCodec *dec = NULL;
+    el::Logger* logger = el::Loggers::getLogger("default");
 
     ret = av_find_best_stream(fmt_ctx, type, -1, -1, NULL, 0);
     if (ret < 0) {
-        fprintf(stderr, "Could not find %s stream\n", av_get_media_type_string(type));
+        logger->error("Could not find %s stream\n", av_get_media_type_string(type));
         return ret;
     }
 
@@ -116,26 +126,26 @@ static int open_codec_context(int *stream_idx, AVCodecContext **dec_ctx, AVForma
     /* find decoder for the stream */
     dec = avcodec_find_decoder(st->codecpar->codec_id);
     if (!dec) {
-        fprintf(stderr, "Failed to find %s codec\n", av_get_media_type_string(type));
+        logger->error("Failed to find %s codec\n", av_get_media_type_string(type));
         return AVERROR(EINVAL);
     }
 
     /* Allocate a codec context for the decoder */
     *dec_ctx = avcodec_alloc_context3(dec);
     if (!*dec_ctx) {
-        fprintf(stderr, "Failed to allocate the %s codec context\n", av_get_media_type_string(type));
+        logger->error("Failed to allocate the %s codec context\n", av_get_media_type_string(type));
         return AVERROR(ENOMEM);
     }
 
     /* Copy codec parameters from input stream to output codec context */
     if ((ret = avcodec_parameters_to_context(*dec_ctx, st->codecpar)) < 0) {
-        fprintf(stderr, "Failed to copy %s codec parameters to decoder context\n", av_get_media_type_string(type));
+        logger->error("Failed to copy %s codec parameters to decoder context\n", av_get_media_type_string(type));
         return ret;
     }
 
     /* Init the decoders */
     if ((ret = avcodec_open2(*dec_ctx, dec, NULL)) < 0) {
-        fprintf(stderr, "Failed to open %s codec\n", av_get_media_type_string(type));
+        logger->error("Failed to open %s codec\n", av_get_media_type_string(type));
         return ret;
     }
     *stream_idx = stream_index;
@@ -143,38 +153,80 @@ static int open_codec_context(int *stream_idx, AVCodecContext **dec_ctx, AVForma
     return 0;
 }
 
-static int decode_packet(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame)
+static void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize, char *filename)
 {
+    FILE *f;
+    int i;
+
+    f = fopen(filename,"wb");
+    fprintf(f, "P5\n%d %d\n%d\n", xsize, ysize, 255);
+    for (i = 0; i < ysize; i++)
+        fwrite(buf + i * wrap, 1, xsize, f);
+    fclose(f);
+}
+
+int FFH264InputSource::decodePacket(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame) {
     int ret = 0;
+    bool resend = false;
     char estring[AV_ERROR_MAX_STRING_SIZE] = { 0 };
+    el::Logger* logger = el::Loggers::getLogger("default");
 
-    // submit the packet to the decoder
-    ret = avcodec_send_packet(dec, pkt);
-    if (ret < 0) {
-        fprintf(stderr, "Error submitting a packet for decoding (%s)\n", av_make_error_string(estring, AV_ERROR_MAX_STRING_SIZE, ret));
-        return ret;
-    }
-
-    // get all the available frames from the decoder
-    while (ret >= 0) {
-        ret = avcodec_receive_frame(dec, frame);
-        if (ret < 0) {
-            // those two return values are special and mean there is no output
-            // frame available, but there were no errors during decoding
-            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))
-                return 0;
-
-            fprintf(stderr, "Error during decoding (%s)\n", av_make_error_string(estring, AV_ERROR_MAX_STRING_SIZE, ret));
+    do {
+        // submit the packet to the decoder
+        ret = avcodec_send_packet(dec, pkt);
+        if (ret == AVERROR(EAGAIN)) {
+            if (resend) {
+                logger->error("already resend, but still EAGAIN");
+                return AVERROR_BUG;
+            }
+            resend = true;
+            ret = 0;
+        } else if (ret < 0) {
+            logger->error("Error submitting a packet for decoding (%s)", av_make_error_string(estring, AV_ERROR_MAX_STRING_SIZE, ret));
             return ret;
         }
 
-        // write the frame data to output file
-        //ret = output_video_frame(frame);
+        // get all the available frames from the decoder
+        while (ret >= 0) {
+            ret = avcodec_receive_frame(dec, frame);
+            if (ret < 0) {
+                // those two return values are special and mean there is no output
+                // frame available, but there were no errors during decoding
+                if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) break;
 
-        LOG(INFO) << "decoded frame coded_n:" << frame->coded_picture_number;
-        av_frame_unref(frame);
-        if (ret < 0) return ret;
-    }
+                logger->error("Error during decoding (%s)", av_make_error_string(estring, AV_ERROR_MAX_STRING_SIZE, ret));
+                return ret;
+            }
+
+            // write the frame data to output file
+            // ffmpeg/example/decode_video.c
+            // ffmpeg/example/demuxing_decoding.c
+            if (dumpfile) {
+                char filename[1024];
+                if (pgm) {
+                    snprintf(filename, sizeof(filename), "%s/%d", sTimestamp.c_str(), dec->frame_number);
+                    pgm_save(frame->data[0], frame->linesize[0], frame->width, frame->height, filename);
+                } else {
+                    uint8_t *dst_data[4] = {NULL};
+                    int dst_linesize[4];
+                    snprintf(filename, sizeof(filename), "dump_%s/video.yuv", sTimestamp.c_str());
+                    enum AVPixelFormat pix_fmt = static_cast<enum AVPixelFormat>(frame->format);
+                    int bufsize = av_image_alloc(dst_data, dst_linesize, frame->width, frame->height, pix_fmt, 1);
+                    if (bufsize >= 0) {
+                        av_image_copy(dst_data, dst_linesize, (const uint8_t **)(frame->data),
+                                        frame->linesize, pix_fmt, frame->width, frame->height);
+                        FILE *fp = fopen(filename, "a+");
+                        if (fp) {
+                            fwrite(dst_data[0], 1, bufsize, fp);
+                            fclose(fp);
+                        }
+                        av_free(dst_data[0]);
+                    }
+                }
+            }
+            av_frame_unref(frame);
+        }
+    } while (resend);
 
     return 0;
 }
@@ -223,9 +275,14 @@ bool FFH264InputSource::startCapture() {
 
     av_dump_format(fmtctx, 0, device.c_str(), 0);
 
+    auto ts = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch());
+    sTimestamp = std::to_string(ts.count());
+    LOG(INFO) << "session timestamp: " << sTimestamp;
+    std::string dumpdir = "dump_" + sTimestamp;
+    if (dumpfile) mkdir(dumpdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
     decoding = true;
     decodingThread = std::thread(&FFH264InputSource::decodingTask, this, fmtctx, decctx);
-
     encoding = true;
     encodingThread = std::thread(&FFH264InputSource::encodingTask, this);
     return true;

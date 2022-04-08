@@ -26,10 +26,13 @@ protected:
     virtual void doStopGettingFrames() override;
 
 private:
+    static void selfDestructTriggerHandler(void *udata);
+
     bool initialize(const ParamTypeKeyValMap &tkv);
     bool startCapture();
     void stopCapture();
 
+    int decodePacket(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame);
     void decodingTask(AVFormatContext *s, AVCodecContext *decctx);
     void encodingTask();
 
@@ -39,7 +42,8 @@ private:
     int width;
     int height;
     int framerate;
-    std::string dumpfile;
+    bool dumpfile;
+    bool pgm;
     std::string device;
 
     std::atomic_bool started;
@@ -48,5 +52,8 @@ private:
 
     std::thread decodingThread;
     std::thread encodingThread;
+
+    EventTriggerId selfDestructTriggerId;
+    std::string sTimestamp;
 };
 }
