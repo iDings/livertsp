@@ -1,0 +1,1 @@
+gcc -I /usr/include/x86_64-linux-gnu/ -o v4l2_capture v4l2_capture.c -I/usr/include/x86_64-linux-gnu -lavcodec -lavformat -lavutil -lavdevice
