@@ -10,6 +10,7 @@
 
 #include "LiveMediaInputSource.hh"
 #include "LiveMediaTypeDef.h"
+#include "FFHelper.hh"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -55,5 +56,7 @@ private:
 
     EventTriggerId selfDestructTriggerId;
     std::string sTimestamp;
+
+    std::deque<FFFrame> decodedFrames;
 };
 }

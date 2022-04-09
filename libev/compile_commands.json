@@ -1,0 +1,70 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/x86_64-linux-gnu-gcc-11",
+      "-DHAVE_CONFIG_H",
+      "-I.",
+      "-g",
+      "-O3",
+      "-c",
+      "ev.c",
+      "-fPIC",
+      "-DPIC",
+      "-o",
+      ".libs/ev.o"
+    ],
+    "directory": "/home/idings/Codes/Oss/libev-4.33",
+    "file": "/home/idings/Codes/Oss/libev-4.33/ev.c",
+    "output": "/home/idings/Codes/Oss/libev-4.33/.libs/ev.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/x86_64-linux-gnu-gcc-11",
+      "-DHAVE_CONFIG_H",
+      "-I.",
+      "-g",
+      "-O3",
+      "-c",
+      "ev.c",
+      "-o",
+      "ev.o"
+    ],
+    "directory": "/home/idings/Codes/Oss/libev-4.33",
+    "file": "/home/idings/Codes/Oss/libev-4.33/ev.c",
+    "output": "/home/idings/Codes/Oss/libev-4.33/ev.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/x86_64-linux-gnu-gcc-11",
+      "-DHAVE_CONFIG_H",
+      "-I.",
+      "-g",
+      "-O3",
+      "-c",
+      "event.c",
+      "-fPIC",
+      "-DPIC",
+      "-o",
+      ".libs/event.o"
+    ],
+    "directory": "/home/idings/Codes/Oss/libev-4.33",
+    "file": "/home/idings/Codes/Oss/libev-4.33/event.c",
+    "output": "/home/idings/Codes/Oss/libev-4.33/.libs/event.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/x86_64-linux-gnu-gcc-11",
+      "-DHAVE_CONFIG_H",
+      "-I.",
+      "-g",
+      "-O3",
+      "-c",
+      "event.c",
+      "-o",
+      "event.o"
+    ],
+    "directory": "/home/idings/Codes/Oss/libev-4.33",
+    "file": "/home/idings/Codes/Oss/libev-4.33/event.c",
+    "output": "/home/idings/Codes/Oss/libev-4.33/event.o"
+  }
+]

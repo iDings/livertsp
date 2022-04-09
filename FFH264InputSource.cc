@@ -1,7 +1,7 @@
 #include "FFH264InputSource.hh"
 #include "easyloggingpp/easylogging++.h"
 #include "FFUniqueWrapper.hh"
-#include "FFGlobal.hh"
+#include "FFHelper.hh"
 
 #include <future>
 #include <chrono>
@@ -29,7 +29,7 @@ FFH264InputSource::FFH264InputSource(UsageEnvironment &env) :
         LiveMediaInputSource(env), width(480), height(360), framerate(15), dumpfile(true), pgm(false),
         device("/dev/video0"), started(false), decoding(false), encoding(false) {
     //LOG(DEBUG) << "+FFH264InputSource";
-    FFGlobal::Init();
+    FFHelper::Init();
     selfDestructTriggerId = envir().taskScheduler().createEventTrigger(FFH264InputSource::selfDestructTriggerHandler);
 }
 
@@ -197,6 +197,11 @@ int FFH264InputSource::decodePacket(AVCodecContext *dec, const AVPacket *pkt, AV
                 logger->error("Error during decoding (%s)", av_make_error_string(estring, AV_ERROR_MAX_STRING_SIZE, ret));
                 return ret;
             }
+
+            int width = frame->width;
+            int height = frame->height;
+            int format = frame->format;
+            //decodedFrames.emplace_back(frame, pts, width, height, format);
 
             // write the frame data to output file
             // ffmpeg/example/decode_video.c

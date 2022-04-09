@@ -1,7 +1,7 @@
 LIVE555_DIR = live
 DEPDIR = .deps
 PREFIX = out/usr/local
-INCLUDES = -I$(LIVE555_DIR)/UsageEnvironment/include -I$(LIVE555_DIR)/groupsock/include -I$(LIVE555_DIR)/liveMedia/include -I$(LIVE555_DIR)/BasicUsageEnvironment/include
+INCLUDES = -I$(LIVE555_DIR)/UsageEnvironment/include -I$(LIVE555_DIR)/groupsock/include -I$(LIVE555_DIR)/liveMedia/include -I$(LIVE555_DIR)/BasicUsageEnvironment/include -Ilibev
 # Default library filename suffixes for each library that we link with.  The "config.*" file might redefine these later.
 libliveMedia_LIB_SUFFIX = $(LIB_SUFFIX)
 libBasicUsageEnvironment_LIB_SUFFIX = $(LIB_SUFFIX)
@@ -10,6 +10,7 @@ libgroupsock_LIB_SUFFIX = $(LIB_SUFFIX)
 ##### Change the following for your environment:
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
 EASYLOGGING_FLAGS = -DELPP_THREAD_SAFE
+LIBEV_FLAGS = -DEV_STANDALONE=1
 
 COMPILE_OPTS =	-g $(EASYLOGGING_FLAGS) $(DEPFLAGS) $(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O0 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
 C =			c
@@ -58,7 +59,12 @@ MEDIA_SERVER_CC_SRCS = Main.cc \
 					   LiveMediaInputSource.cc \
 					   FFH264InputSource.cc
 
-MEDIA_SERVER_OBJS = $(MEDIA_SERVER_C_SRCS:%.c=%.o) $(MEDIA_SERVER_CC_SRCS:%.cc=%.o) $(EASYLOGGING_CC_SRCS:.cc=.o)
+LIBEV_C_SRCS = libev/ev.c
+
+MEDIA_SERVER_OBJS = $(MEDIA_SERVER_C_SRCS:%.c=%.o) \
+					$(MEDIA_SERVER_CC_SRCS:%.cc=%.o) \
+					$(EASYLOGGING_CC_SRCS:.cc=.o) \
+					$(LIBEV_C_SRCS:%.c=%.o)
 DEPFILES := $(MEDIA_SERVER_C_SRCS:%.c=$(DESTDIR)/%.d) $(MEDIA_SERVER_CC_SRCS:%.cc=$(DEPDIR)/%.d)
 #$(info $(DEPFILES))
 
@@ -96,6 +102,9 @@ install: $(MEDIA_SERVER)
 
 easyloggingpp/%.o : easyloggingpp/%.cc
 	$(CPLUSPLUS_COMPILER) -c $(CPLUSPLUS_FLAGS) $< -o $@
+
+libev/%.o : libev/%.c
+	$(C_COMPILER) -c $(C_FLAGS) $< -o $@
 
 $(DEPDIR): ; @mkdir -p $@
 
