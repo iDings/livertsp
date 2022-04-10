@@ -427,7 +427,8 @@ LiveRTSPServer::RTSPServerImpl::MakeRTSPServerImpl(UsageEnvironment &env,
         Port ourPort, UserAuthenticationDatabase *authDatabase, unsigned reclamationSeconds) {
     int ourSocketIPv4 = setUpOurSocket(env, ourPort, AF_INET);
     int ourSocketIPv6 = setUpOurSocket(env, ourPort, AF_INET6);
-    if (ourSocketIPv4 < 0 && ourSocketIPv6 < 0) {
+    if (ourSocketIPv4 < 0 || ourSocketIPv6 < 0) {
+        LOG(ERROR) << "socket ipv4 failure:" << env.getResultMsg();
         return nullptr;
     }
 

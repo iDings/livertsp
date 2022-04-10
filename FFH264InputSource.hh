@@ -7,6 +7,8 @@
 #include <thread>
 #include <map>
 #include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 #include "LiveMediaInputSource.hh"
 #include "LiveMediaTypeDef.h"
@@ -15,6 +17,8 @@
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 }
 
 namespace LiveRTSP {
@@ -28,14 +32,17 @@ protected:
 
 private:
     static void selfDestructTriggerHandler(void *udata);
+    static void frameNotifyTriggerHandler(void *udata);
 
     bool initialize(const ParamTypeKeyValMap &tkv);
     bool startCapture();
     void stopCapture();
 
-    int decodePacket(AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame);
-    void decodingTask(AVFormatContext *s, AVCodecContext *decctx);
-    void encodingTask();
+    int decodePacket(AVStream *video_st, AVCodecContext *dec, const AVPacket *pkt, AVFrame *frame, SwsContext *sws_ctx);
+    void decodingTask(AVFormatContext *s, AVCodecContext *decctx, int stream_idx, SwsContext *sws_ctx);
+
+    int encodePacket(AVCodecContext *c, const AVFrame *frame, AVPacket *pkt);
+    void encodingTask(AVCodecContext *c);
 
     virtual void doGetNextFrame() override;
 
@@ -43,6 +50,8 @@ private:
     int width;
     int height;
     int framerate;
+    // dumpfile=yuv
+    // dumpfile=pgm
     bool dumpfile;
     bool pgm;
     std::string device;
@@ -57,6 +66,16 @@ private:
     EventTriggerId selfDestructTriggerId;
     std::string sTimestamp;
 
+    std::mutex decodedFrames_lock;
+    std::condition_variable decodedFrames_cond;
     std::deque<FFFrame> decodedFrames;
+
+    std::mutex encodedPackets_lock;
+    std::deque<FFPacket> encodedPackets;
+
+    EventTriggerId frameNotifyTriggerId;
+
+    struct timeval last_tv;
+    int64_t last_pts;
 };
 }

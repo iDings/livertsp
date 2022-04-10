@@ -26,7 +26,7 @@ CONSOLE_LINK_OPTS =	$(LINK_OPTS)
 LIBRARY_LINK =		ar cr
 LIBRARY_LINK_OPTS =
 LIB_SUFFIX =			a
-LIBS_FOR_CONSOLE_APPLICATION = -lavcodec -lavutil -lavformat -lavdevice
+LIBS_FOR_CONSOLE_APPLICATION = -lavcodec -lavutil -lavformat -lavdevice -lswscale
 LIBS_FOR_GUI_APPLICATION =
 EXE =
 ##### End of variables to change
