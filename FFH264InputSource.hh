@@ -77,5 +77,7 @@ private:
 
     struct timeval last_tv;
     int64_t last_pts;
+
+    uint32_t next_pts;
 };
 }

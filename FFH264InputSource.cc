@@ -49,7 +49,8 @@ FFH264InputSource::FFH264InputSource(UsageEnvironment &env) :
         decoding(false),
         encoding(false),
         last_tv({0, 0}),
-        last_pts(0)
+        last_pts(0),
+        next_pts(0)
 {
     //LOG(DEBUG) << "+FFH264InputSource";
     FFHelper::Init();
@@ -240,6 +241,10 @@ void FFH264InputSource::encodingTask(AVCodecContext *c) {
             }
         }
 
+        //LOG(INFO) << "frame pts:" << frame.frame->pts << " pts:" << frame.pts;
+        // pts need liner
+        // doc/example/muxing.c
+        frame.frame->pts = next_pts++;
         ret = encodePacket(c, frame.frame, pkt);
         if (ret < 0) {
             LOG(ERROR) << "encoding packet failure";
@@ -361,7 +366,7 @@ int FFH264InputSource::decodePacket(AVStream *video_st, AVCodecContext *c, const
             AVRational tb = video_st->time_base;
             double pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
             //LOG(INFO) << "frame width " << frame->width << " height:" << frame->height;
-            //LOG(INFO) << "      format:" << frame->format << " pts:" << std::hex << frame->pts;
+            //LOG(INFO) << " frame->pts:" << frame->pts << " pts:" << pts;
 
             if (sws_ctx) {
                 AVFrame *picture;
@@ -553,6 +558,7 @@ bool FFH264InputSource::startCapture() {
     //if (dumpfile)
     mkdir(dumpdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
+    next_pts = 0;
     decoding = true;
     decodingThread = std::thread(&FFH264InputSource::decodingTask, this, fmtctx, decctx, stream_idx, sws_ctx);
     encoding = true;
