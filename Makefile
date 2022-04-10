@@ -20,7 +20,7 @@ CPP =			cpp
 CPLUSPLUS_COMPILER =	c++
 CPLUSPLUS_FLAGS = -std=c++11 $(COMPILE_OPTS) -Wall -DBSD=1 -Wno-range-loop-construct  -fsanitize=address -fno-omit-frame-pointer
 OBJ =			o
-LINK =			c++ -Wl,-v -o
+LINK =			c++ -o
 LINK_OPTS =		-L. -fsanitize=address -fno-omit-frame-pointer
 CONSOLE_LINK_OPTS =	$(LINK_OPTS)
 LIBRARY_LINK =		ar cr

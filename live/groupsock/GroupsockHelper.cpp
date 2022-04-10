@@ -303,6 +303,7 @@ int setupStreamSocket(UsageEnvironment& env, Port port, int domain,
 
   int reuseFlag = groupsockPriv(env)->reuseFlag;
   reclaimGroupsockPriv(env);
+  fprintf(stderr, "reuseFlag:%d\n", reuseFlag);
   if (setsockopt(newSocket, SOL_SOCKET, SO_REUSEADDR,
 		 (const char*)&reuseFlag, sizeof reuseFlag) < 0) {
     socketErr(env, "setsockopt(SO_REUSEADDR) error: ");
@@ -318,6 +319,7 @@ int setupStreamSocket(UsageEnvironment& env, Port port, int domain,
   // Windoze doesn't properly handle SO_REUSEPORT
 #else
 #ifdef SO_REUSEPORT
+  fprintf(stderr, "SO_REUSEPORT:%d\n", reuseFlag);
   if (setsockopt(newSocket, SOL_SOCKET, SO_REUSEPORT,
 		 (const char*)&reuseFlag, sizeof reuseFlag) < 0) {
     socketErr(env, "setsockopt(SO_REUSEPORT) error: ");
