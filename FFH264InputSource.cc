@@ -42,7 +42,7 @@ FFH264InputSource::FFH264InputSource(UsageEnvironment &env) :
         width(480),
         height(360),
         framerate(15),
-        dumpfile(true),
+        dumpfile(false),
         pgm(false),
         device("/dev/video0"),
         started(false),
