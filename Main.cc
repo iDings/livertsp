@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
     }
 
     lrs->Start();
-    lrs->Control("add_session name=livestream0 insrc=ffmpeg video=h264,width:640,heigh:480,dumpfile:yuv");
+    lrs->Control("add_session name=livestream0 insrc=ffmpeg video=h264,width:320,heigh:180,dumpfile:yuv");
 
     while (running) {
         sleep(1);

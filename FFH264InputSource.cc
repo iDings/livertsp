@@ -540,8 +540,13 @@ bool FFH264InputSource::startCapture() {
     encctx->gop_size = 10;
     encctx->max_b_frames = 0;
     encctx->pix_fmt = AV_PIX_FMT_YUV420P; //all
-    av_opt_set(encctx->priv_data, "preset", "slow", 0);
-    ret = avcodec_open2(encctx, codec, NULL);
+    // https://trac.ffmpeg.org/wiki/Encode/H.264
+    av_opt_set(encctx->priv_data, "preset", "ultrafast", 0);
+
+    AVDictionary *codec_opts = NULL;
+    av_dict_set(&codec_opts, "threads", "4", 0);
+    ret = avcodec_open2(encctx, codec, &codec_opts);
+    av_dict_free(&codec_opts);
     if (ret < 0) {
         LOG(ERROR) << "avcodec_open2 failure:" << ret;
         avcodec_free_context(&encctx);
@@ -626,6 +631,12 @@ void FFH264InputSource::doGetNextFrame() {
         if (!encodedPackets.empty())
             envir().taskScheduler().triggerEvent(frameNotifyTriggerId, this);
     }
+
+#if 0
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    fprintf(stderr, "%ld.%06ld queue size:%ld\n", ts.tv_sec, (ts.tv_nsec / 1000), encodedPackets.size());
+#endif
 
     fFrameSize = pkt.pkt->size;
     if (pkt.pkt->size > static_cast<int>(fMaxSize)) {
