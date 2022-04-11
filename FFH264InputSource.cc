@@ -180,6 +180,7 @@ int FFH264InputSource::encodePacket(AVCodecContext *c, const AVFrame *frame, AVP
                 }
             }
 
+            //fpsStat("encoding", pkt->size);
             //LOG(INFO) << "Write packet " << pkt->pts << " size=" << pkt->size;
             {
                 std::lock_guard<std::mutex> lock(encodedPackets_lock);
@@ -367,6 +368,8 @@ int FFH264InputSource::decodePacket(AVStream *video_st, AVCodecContext *c, const
             double pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
             //LOG(INFO) << "frame width " << frame->width << " height:" << frame->height;
             //LOG(INFO) << " frame->pts:" << frame->pts << " pts:" << pts;
+            // XXX: frame pkt_size ??
+            //fpsStat("decoding", frame->pkt_size);
 
             if (sws_ctx) {
                 AVFrame *picture;
