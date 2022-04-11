@@ -85,11 +85,15 @@ char const *H264LiveMediaSubsession::getAuxSDPLine(RTPSink *rtpSink, FramedSourc
     return auxSDPLine.empty() ? "" : auxSDPLine.c_str();
 }
 
+// TOOD: H264VideoStreamFramer ffplay will lose some when docoding
+// TODO: H264VideoStreamDiscreteFramer need remove start and feed one NALU one time
+// reference v4l2rtspserver
 FramedSource *H264LiveMediaSubsession::createNewStreamSource(unsigned clientSessionId, unsigned &estBitrate) {
     LOG(INFO) << "createNewStreamSource";
     estBitrate = 1000; // kps, estimate
     FramedSource *source = streamReplicator().createStreamReplica();
     return H264VideoStreamDiscreteFramer::createNew(envir(), source);
+    //return H264VideoStreamFramer::createNew(envir(), source, true);
 }
 
 RTPSink *H264LiveMediaSubsession::createNewRTPSink(Groupsock *rtpGroupsock,
