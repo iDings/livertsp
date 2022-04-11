@@ -73,7 +73,7 @@ void FFH264InputSource::selfDestructTriggerHandler(void *udata) {
 
 void FFH264InputSource::frameNotifyTriggerHandler(void *udata) {
     FFH264InputSource *thiz = (FFH264InputSource *)udata;
-    thiz->doGetNextFrame();
+    if (thiz->isCurrentlyAwaitingData()) thiz->doGetNextFrame();
     return;
 }
 
@@ -170,7 +170,7 @@ int FFH264InputSource::encodePacket(AVCodecContext *c, const AVFrame *frame, AVP
                 return ret;
             }
 
-            if (1) {
+            if (dumpfile) {
                 char filename[1024]{0};
                 snprintf(filename, sizeof(filename), "dump_%s/encoding.h264", sTimestamp.c_str());
                 FILE *fp = fopen(filename, "a+");
@@ -555,8 +555,7 @@ bool FFH264InputSource::startCapture() {
     sTimestamp = std::to_string(ts.count());
     LOG(INFO) << "session timestamp: " << sTimestamp;
     std::string dumpdir = "dump_" + sTimestamp;
-    //if (dumpfile)
-    mkdir(dumpdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    if (dumpfile) mkdir(dumpdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
     next_pts = 0;
     decoding = true;
@@ -640,8 +639,9 @@ void FFH264InputSource::doGetNextFrame() {
         fPresentationTime = last_tv;
     } else {
         struct timeval current;
-        int64_t elapsed = (pkt.pkt->pts - last_pts);
-
+        // TODO:
+        AVRational time_base = (AVRational){1, 15};
+        int64_t elapsed = ((pkt.pkt->pts - last_pts) * av_q2d(time_base)) * INT64_C(1000000);
         current.tv_usec += elapsed;
         fPresentationTime = timeval_normalise(current);
         last_tv = current;

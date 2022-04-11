@@ -44,6 +44,7 @@ ServerMediaSession *LiveMediaFactory::MakeServerMediaSession(UsageEnvironment &e
         LiveMediaInputSource *vinput = lmis[video_tkv.first](env, video_tkv);
         StreamReplicator *replicator = StreamReplicator::createNew(env, vinput, False);
         LiveMediaSubsession *lms = subsess[video_tkv.first](env, replicator, video_tkv);
+        OutPacketBuffer::maxSize = 100000; // allow for some possibly large H.264 frames
         sms->addSubsession(lms);
     }
 

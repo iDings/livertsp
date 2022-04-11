@@ -1,6 +1,7 @@
 #include "H264LiveMediaSubsession.hh"
 #include "easyloggingpp/easylogging++.h"
 #include "H264VideoStreamDiscreteFramer.hh"
+#include "H264VideoStreamFramer.hh"
 #include "H264VideoRTPSink.hh"
 
 namespace LiveRTSP {
