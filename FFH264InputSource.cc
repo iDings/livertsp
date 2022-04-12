@@ -82,7 +82,7 @@ bool FFH264InputSource::initialize(const ParamTypeKeyValMap &tkv) {
 
     if (parameters.count("height")) height = std::stoi(parameters.at("height"));
     if (parameters.count("width")) width = std::stoi(parameters.at("width"));
-    if (parameters.count("dumpfile")) {
+    if (parameters.count("dumpfile") && (parameters.at("dumpfile") != "none")) {
         dumpfile = true;
         std::string mine = parameters.at("dumpfile");
         if (mine == "pgm") pgm = true;

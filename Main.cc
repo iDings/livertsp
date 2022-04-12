@@ -3,7 +3,9 @@
 
 #include "easyloggingpp/easylogging++.h"
 #include "libev/ev++.h"
+
 #include "LiveRTSPServer.hh"
+#include "FFH264InputSource.hh"
 
 INITIALIZE_EASYLOGGINGPP
 
@@ -51,7 +53,12 @@ int main(int argc, char **argv) {
     }
 
     lrs->Start();
-    std::string add_session = "add_session name=livestream0 insrc=ffmpeg video=h264,width:320,heigh:180,dumpfile:yuv";
+    std::string add_session = "add_session name=livestream0 insrc=ffmpeg ";
+    FFH264InputSource::Builder builder;
+    builder.width(320).height(180);
+    //builder.dumpfile("yuv");
+    add_session += "video=" + builder.buildString();
+
     lrs->Control(add_session);
 
     while (running) {
