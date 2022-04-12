@@ -2,6 +2,7 @@
 #include "easyloggingpp/easylogging++.h"
 #include "FFUniqueWrapper.hh"
 #include "FFHelper.hh"
+#include "Base64.hh"
 
 #include <future>
 #include <chrono>
@@ -10,6 +11,8 @@
 #include <sys/stat.h>
 #include <cassert>
 #include <cstdint>
+#include <iomanip>
+#include <sys/prctl.h>
 
 extern "C" {
 #include <libavutil/pixdesc.h>
@@ -27,6 +30,11 @@ extern "C" {
 #endif
 
 namespace LiveRTSP {
+const char H264marker[] = {0,0,0,1};
+const char H264shortmarker[] = {0,0,1};
+
+const int FFH264InputSource::kEncoderFramerate = 30;
+
 FFH264InputSource *FFH264InputSource::CreateNew(UsageEnvironment &env, const ParamTypeKeyValMap &video_tkv) {
     FFH264InputSource *self = new FFH264InputSource(env);
     if (!self->initialize(video_tkv)) {
@@ -41,7 +49,7 @@ FFH264InputSource::FFH264InputSource(UsageEnvironment &env) :
         LiveMediaInputSource(env),
         width(480),
         height(360),
-        framerate(15),
+        framerate(kEncoderFramerate),
         dumpfile(false),
         pgm(false),
         device("/dev/video0"),
@@ -50,7 +58,9 @@ FFH264InputSource::FFH264InputSource(UsageEnvironment &env) :
         encoding(false),
         last_tv({0, 0}),
         last_pts(0),
-        next_pts(0)
+        next_pts(0),
+        m_repeatConfig(false),
+        m_keepMarker(false)
 {
     //LOG(DEBUG) << "+FFH264InputSource";
     FFHelper::Init();
@@ -95,6 +105,8 @@ bool FFH264InputSource::initialize(const ParamTypeKeyValMap &tkv) {
 // seperate reading + decoding, just rawvideo, decoding seems fine
 void FFH264InputSource::decodingTask(AVFormatContext *fmtctx, AVCodecContext *decctx, int stream_idx, SwsContext *sws_ctx) {
     LOG(INFO) << "bringup decoding task";
+    prctl(PR_SET_NAME, "decoding");
+
     int ret = 0;
     AVStream *video_st = fmtctx->streams[stream_idx];
 
@@ -198,6 +210,7 @@ int FFH264InputSource::encodePacket(AVCodecContext *c, const AVFrame *frame, AVP
 
 void FFH264InputSource::encodingTask(AVCodecContext *c) {
     LOG(INFO) << "bringup encoding task";
+    prctl(PR_SET_NAME, "encoding");
 
     FFFrame frame;
     bool got_frame = false;
@@ -209,7 +222,7 @@ void FFH264InputSource::encodingTask(AVCodecContext *c) {
             got_frame = false;
             std::unique_lock<std::mutex> ul(decodedFrames_lock);
             decodedFrames_cond.wait_for(ul,
-                    std::chrono::microseconds(100), [this] {
+                    std::chrono::microseconds(1000), [this] {
                         return !decodedFrames.empty();
                     });
             if (!decodedFrames.empty()) {
@@ -477,7 +490,7 @@ bool FFH264InputSource::startCapture() {
 
     std::string video_size = std::to_string(width) + "x" + std::to_string(height);
     av_dict_set(&opts, "video_size", video_size.c_str(), 0);
-    std::string fr = std::to_string(framerate);
+    std::string fr = std::to_string(kEncoderFramerate);
     av_dict_set(&opts, "framerate", fr.c_str(), 0);
     ret = avformat_open_input(&fmtctx, device.c_str(), ifmt, &opts);
     av_dict_free(&opts);
@@ -538,8 +551,8 @@ bool FFH264InputSource::startCapture() {
     encctx->bit_rate = 200000;
     encctx->width = decctx->width;
     encctx->height = decctx->height;
-    encctx->time_base = (AVRational){1, 15};
-    encctx->framerate = (AVRational){15, 1}; //decctx->framerate;
+    encctx->time_base = (AVRational){1, kEncoderFramerate};
+    encctx->framerate = (AVRational){kEncoderFramerate, 1}; //decctx->framerate;
     encctx->gop_size = 10;
     encctx->max_b_frames = 0;
     encctx->pix_fmt = AV_PIX_FMT_YUV420P; //all
@@ -547,7 +560,7 @@ bool FFH264InputSource::startCapture() {
     av_opt_set(encctx->priv_data, "preset", "ultrafast", 0);
 
     AVDictionary *codec_opts = NULL;
-    av_dict_set(&codec_opts, "threads", "4", 0);
+    av_dict_set(&codec_opts, "threads", "auto", 0);
     ret = avcodec_open2(encctx, codec, &codec_opts);
     av_dict_free(&codec_opts);
     if (ret < 0) {
@@ -591,6 +604,7 @@ void FFH264InputSource::doStopGettingFrames() {
     }
 }
 
+// BUG:
 static struct timeval timeval_normalise(struct timeval ts) {
     while(ts.tv_usec >= USEC_PER_SEC) {
         ++(ts.tv_sec);
@@ -614,57 +628,166 @@ static struct timeval timeval_normalise(struct timeval ts) {
     return ts;
 }
 
+unsigned char* FFH264InputSource::extractFrame(unsigned char* frame, size_t& size, size_t& outsize, int& frameType)
+{
+	unsigned char * outFrame = NULL;
+	outsize = 0;
+	unsigned int markerlength = 0;
+	frameType = 0;
+
+	unsigned char *startFrame = (unsigned char*)memmem(frame,size,H264marker,sizeof(H264marker));
+	if (startFrame != NULL) {
+		markerlength = sizeof(H264marker);
+	} else {
+		startFrame = (unsigned char*)memmem(frame,size,H264shortmarker,sizeof(H264shortmarker));
+		if (startFrame != NULL) {
+			markerlength = sizeof(H264shortmarker);
+		}
+	}
+	if (startFrame != NULL) {
+		frameType = startFrame[markerlength];
+
+		int remainingSize = size-(startFrame-frame+markerlength);
+		unsigned char *endFrame = (unsigned char*)memmem(&startFrame[markerlength], remainingSize, H264marker, sizeof(H264marker));
+		if (endFrame == NULL) {
+			endFrame = (unsigned char*)memmem(&startFrame[markerlength], remainingSize, H264shortmarker, sizeof(H264shortmarker));
+		}
+
+		if (m_keepMarker)
+		{
+			size -=  startFrame-frame;
+			outFrame = startFrame;
+		}
+		else
+		{
+			size -=  startFrame-frame+markerlength;
+			outFrame = &startFrame[markerlength];
+		}
+
+		if (endFrame != NULL)
+		{
+			outsize = endFrame - outFrame;
+		}
+		else
+		{
+			outsize = size;
+		}
+		size -= outsize;
+	} else if (size>= sizeof(H264shortmarker)) {
+		 LOG(INFO) << "No marker found";
+	}
+
+	return outFrame;
+}
+
+std::list<std::pair<unsigned char*,size_t>> FFH264InputSource::splitNalu(unsigned char* frame, unsigned frameSize) {
+	std::list<std::pair<unsigned char*,size_t>> frameList;
+
+	size_t bufSize = frameSize;
+	size_t size = 0;
+	int frameType = 0;
+	unsigned char* buffer = this->extractFrame(frame, bufSize, size, frameType);
+	while (buffer != NULL) {
+		switch (frameType&0x1F) {
+			case 7: m_sps.assign((char*)buffer,size); break;
+			case 8: m_pps.assign((char*)buffer,size); break;
+			case 5:
+				if (m_repeatConfig && !m_sps.empty() && !m_pps.empty()) {
+					frameList.push_back(std::pair<unsigned char*,size_t>((unsigned char*)m_sps.c_str(), m_sps.size()));
+					frameList.push_back(std::pair<unsigned char*,size_t>((unsigned char*)m_pps.c_str(), m_pps.size()));
+				}
+			break;
+			default:
+				break;
+		}
+
+		if (!m_sps.empty() && !m_pps.empty())
+		{
+			u_int32_t profile_level_id = 0;
+			if (m_sps.size() >= 4) profile_level_id = (((unsigned char)m_sps[1])<<16)|(((unsigned char)m_sps[2])<<8)|((unsigned char)m_sps[3]);
+
+			char* sps_base64 = base64Encode(m_sps.c_str(), m_sps.size());
+			char* pps_base64 = base64Encode(m_pps.c_str(), m_pps.size());
+
+			std::ostringstream os;
+			os << "profile-level-id=" << std::hex << std::setw(6) << std::setfill('0') << profile_level_id;
+			os << ";sprop-parameter-sets=" << sps_base64 <<"," << pps_base64;
+			m_auxLine.assign(os.str());
+
+			delete [] sps_base64;
+			delete [] pps_base64;
+		}
+		frameList.push_back(std::pair<unsigned char*,size_t>(buffer, size));
+
+		buffer = this->extractFrame(&buffer[size], bufSize, size, frameType);
+	}
+	return frameList;
+}
+
+// we use DiscreteFramer, need feed one NALU
+// one time, for no data partition, seems
+// one slice one NALU
 void FFH264InputSource::doGetNextFrame() {
     if (!started && !startCapture()) {
         handleClosure();
         return;
     }
-
-    FFPacket pkt;
     if (!started) started = true;
 
-    {
-        std::lock_guard<std::mutex> lg(encodedPackets_lock);
-        if (encodedPackets.empty()) return;
+    if (nalus_sending.empty()) {
+        {
+            std::lock_guard<std::mutex> lg(encodedPackets_lock);
+            if (encodedPackets.empty()) return;
 
-        pkt = std::move(encodedPackets.front());
-        encodedPackets.pop_front();
+            pkt_sending = std::move(encodedPackets.front());
+            encodedPackets.pop_front();
 
-        // next future
-        if (!encodedPackets.empty())
-            envir().taskScheduler().triggerEvent(frameNotifyTriggerId, this);
+            // next future
+            if (!encodedPackets.empty())
+                envir().taskScheduler().triggerEvent(frameNotifyTriggerId, this);
+        }
+
+        if (!last_pts) {
+            last_pts = pkt_sending.pkt->pts;
+            gettimeofday(&last_tv, NULL);
+            pts_sending = last_tv;
+        } else {
+            // TODO:
+            AVRational time_base = (AVRational){1, kEncoderFramerate};
+            int64_t elapsed_us = ((pkt_sending.pkt->pts - last_pts) * av_q2d(time_base)) * INT64_C(1000000);
+
+            last_tv.tv_usec += elapsed_us;
+            pts_sending = last_tv = timeval_normalise(last_tv);
+            last_pts = pkt_sending.pkt->pts;
+        }
+
+        nalus_sending = splitNalu(pkt_sending.pkt->data, pkt_sending.pkt->size);
     }
+    if (nalus_sending.empty()) {
+        LOG(INFO) << "sending empty return";
+        return;
+    }
+
+    std::pair<unsigned char*,size_t> nalu = nalus_sending.front();
+    nalus_sending.pop_front();
+    size_t size = nalu.second;
+    const unsigned char *data = nalu.first;
 
 #if 0
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    fprintf(stderr, "%ld.%06ld queue size:%ld\n", ts.tv_sec, (ts.tv_nsec / 1000), encodedPackets.size());
+    fprintf(stderr, "%d %ld.%06ld queue size:%ld nalue_size:%zu\n", gettid(), ts.tv_sec, (ts.tv_nsec / 1000), encodedPackets.size(), size);
 #endif
 
-    fFrameSize = pkt.pkt->size;
-    if (pkt.pkt->size > static_cast<int>(fMaxSize)) {
+    fFrameSize = size;
+    if (size > fMaxSize) {
         fFrameSize = fMaxSize;
-        fNumTruncatedBytes = pkt.pkt->size - fMaxSize;
+        fNumTruncatedBytes = size - fMaxSize;
     }
 
-    if (!last_pts) {
-        last_pts = pkt.pkt->pts;
-        gettimeofday(&last_tv, NULL);
-        fPresentationTime = last_tv;
-    } else {
-        struct timeval current;
-        // TODO:
-        AVRational time_base = (AVRational){1, 15};
-        int64_t elapsed = ((pkt.pkt->pts - last_pts) * av_q2d(time_base)) * INT64_C(1000000);
-        current.tv_usec += elapsed;
-        fPresentationTime = timeval_normalise(current);
-        last_tv = current;
-        last_pts = pkt.pkt->pts;
-    }
-
-    memcpy(fTo, pkt.pkt->data, fFrameSize);
-
-    if (fFrameSize > 0)
-        FramedSource::afterGetting(this);
+    //fDurationInMicroseconds = 60000;
+    fPresentationTime = pts_sending;
+    memcpy(fTo, data, fFrameSize);
+    if (fFrameSize > 0) FramedSource::afterGetting(this);
 }
 }

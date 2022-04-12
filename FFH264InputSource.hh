@@ -22,6 +22,7 @@ extern "C" {
 }
 
 namespace LiveRTSP {
+// TODO: trace timestamp delay, v4l2rtsp
 class FFH264InputSource : public LiveMediaInputSource {
 public:
     struct Parameters {
@@ -71,6 +72,9 @@ protected:
     virtual void doStopGettingFrames() override;
 
 private:
+    static const int kEncoderFramerate;
+
+private:
     static void selfDestructTriggerHandler(void *udata);
     static void frameNotifyTriggerHandler(void *udata);
 
@@ -83,6 +87,9 @@ private:
 
     int encodePacket(AVCodecContext *c, const AVFrame *frame, AVPacket *pkt);
     void encodingTask(AVCodecContext *c);
+
+    std::list<std::pair<unsigned char*,size_t>> splitNalu(unsigned char* frame, unsigned frameSize);
+    unsigned char* extractFrame(unsigned char* frame, size_t& size, size_t& outsize, int& frameType);
 
     virtual void doGetNextFrame() override;
 
@@ -119,5 +126,15 @@ private:
     int64_t last_pts;
 
     uint32_t next_pts;
+
+    bool m_repeatConfig;
+    std::string m_sps;
+    std::string m_pps;
+    std::string m_auxLine;
+    bool m_keepMarker;
+
+    FFPacket pkt_sending;
+    std::list<std::pair<unsigned char*,size_t>> nalus_sending;
+    struct timeval pts_sending;
 };
 }

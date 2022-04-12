@@ -37,7 +37,7 @@ public:
 
     // TODO:
     // message string builder
-    // reliable control
+    // reliable control, control sync
     // result notify callback
     // cancelable
     bool Control(const std::string &msg);
