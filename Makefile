@@ -1,7 +1,8 @@
 LIVE555_DIR = live
 DEPDIR = .deps
 PREFIX = out/usr/local
-INCLUDES = -I$(LIVE555_DIR)/UsageEnvironment/include -I$(LIVE555_DIR)/groupsock/include -I$(LIVE555_DIR)/liveMedia/include -I$(LIVE555_DIR)/BasicUsageEnvironment/include -Ilibev
+FF_INCLUDES = $(shell pkg-config --cflags libavformat)
+INCLUDES = -I$(LIVE555_DIR)/UsageEnvironment/include -I$(LIVE555_DIR)/groupsock/include -I$(LIVE555_DIR)/liveMedia/include -I$(LIVE555_DIR)/BasicUsageEnvironment/include $(FF_INCLUDES) -Ilibev
 # Default library filename suffixes for each library that we link with.  The "config.*" file might redefine these later.
 libliveMedia_LIB_SUFFIX = $(LIB_SUFFIX)
 libBasicUsageEnvironment_LIB_SUFFIX = $(LIB_SUFFIX)
@@ -12,7 +13,7 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.d
 EASYLOGGING_FLAGS = -DELPP_THREAD_SAFE
 LIBEV_FLAGS = -DEV_STANDALONE=1
 
-COMPILE_OPTS =	-g $(EASYLOGGING_FLAGS) $(DEPFLAGS) $(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O0 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
+COMPILE_OPTS =	-g $(LIBEV_FLAGS) $(EASYLOGGING_FLAGS) $(DEPFLAGS) $(INCLUDES) -m64 -fPIC -I/usr/local/include -I. -O0 -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64
 C =			c
 C_COMPILER =		cc
 C_FLAGS =		$(COMPILE_OPTS)  -fsanitize=address -fno-omit-frame-pointer
