@@ -554,10 +554,12 @@ bool FFH264InputSource::startCapture() {
     encctx->time_base = (AVRational){1, kEncoderFramerate};
     encctx->framerate = (AVRational){kEncoderFramerate, 1}; //decctx->framerate;
     encctx->gop_size = 10;
-    encctx->max_b_frames = 0;
+    //encctx->max_b_frames = 0;
+    encctx->has_b_frames = 0;
     encctx->pix_fmt = AV_PIX_FMT_YUV420P; //all
     // https://trac.ffmpeg.org/wiki/Encode/H.264
-    av_opt_set(encctx->priv_data, "preset", "ultrafast", 0);
+    av_opt_set(encctx->priv_data, "preset", "slower", 0);
+    av_opt_set(encctx->priv_data, "weightp", "none", 0);
 
     AVDictionary *codec_opts = NULL;
     av_dict_set(&codec_opts, "threads", "auto", 0);
@@ -604,7 +606,6 @@ void FFH264InputSource::doStopGettingFrames() {
     }
 }
 
-// BUG:
 static struct timeval timeval_normalise(struct timeval ts) {
     while(ts.tv_usec >= USEC_PER_SEC) {
         ++(ts.tv_sec);

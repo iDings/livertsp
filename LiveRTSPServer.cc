@@ -323,6 +323,11 @@ bool LiveRTSPServer::ControlMethodAddSession(const std::map<std::string, std::st
     //    << *insrc_param << " v:" << (video_param ? *video_param : "")
     //    << " a:" << (audio_param ? *audio_param : "");
     rtspServer->addServerMediaSession(sms);
+    char *url = rtspServer->rtspURL(sms);
+    if (url) {
+        LOG(INFO) << "play this stream using URL \"" << url << "\"";
+        delete[] url;
+    }
     return true;
 }
 
